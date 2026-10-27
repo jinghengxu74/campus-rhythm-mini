@@ -158,6 +158,7 @@ struct NoteLiquidGlassOrb: View {
 }
 
 struct NoteLiquidSegmentBar: View {
+    @ObservedObject var workspace: Workspace
     let tabs: [NoteTab]
     @Binding var selection: NoteTab
     let font: (CGFloat, Font.Weight) -> Font
@@ -185,6 +186,7 @@ struct NoteLiquidSegmentBar: View {
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity)
+                .modifier(NoteStatusDropZone(workspace: workspace, tab: tab))
                 .accessibilityLabel(tab.title)
                 .accessibilityAddTraits(selection == tab ? .isSelected : [])
             }

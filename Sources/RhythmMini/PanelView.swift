@@ -164,7 +164,7 @@ struct MiniPanelView: View {
     }
 
     private var statusTabs: some View {
-        NoteLiquidSegmentBar(tabs: NoteTab.allCases.filter { $0 != .forYou }, selection: $workspace.tab, font: controller.font, ink: controller.ink, reduceMotion: reduceMotion)
+        NoteLiquidSegmentBar(workspace: workspace, tabs: NoteTab.allCases.filter { $0 != .forYou }, selection: $workspace.tab, font: controller.font, ink: controller.ink, reduceMotion: reduceMotion)
             .padding(.horizontal, 12).padding(.bottom, 2)
     }
 
@@ -244,7 +244,7 @@ struct MiniPanelView: View {
     }
     private var eventsList: some View {
         VStack(alignment: .leading, spacing: 13) {
-            if showAppleEvents { AppleCalendarView(day: workspace.selectedDay, controller: controller) }
+            if showAppleEvents { AppleCalendarView(day: workspace.selectedDay, workspace: workspace, controller: controller) }
             if showOnlineEvents {
             Divider()
             HStack {

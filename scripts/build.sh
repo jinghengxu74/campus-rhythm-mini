@@ -19,11 +19,15 @@ cat > "$MINI_APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>com.campusrhythm.mini</string>
 <key>CFBundleName</key><string>Campus Rhythm Mini</string>
 <key>CFBundleDisplayName</key><string>Campus Rhythm To-Do Notes</string>
-<key>CFBundleVersion</key><string>60</string>
-<key>CFBundleShortVersionString</key><string>0.9.48</string>
+<key>CFBundleVersion</key><string>61</string>
+<key>CFBundleShortVersionString</key><string>0.9.49</string>
 <key>UTExportedTypeDeclarations</key><array><dict>
 <key>UTTypeIdentifier</key><string>com.campusrhythm.note-order</string>
 <key>UTTypeDescription</key><string>Rhythm Note internal order</string>
+<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+</dict><dict>
+<key>UTTypeIdentifier</key><string>com.campusrhythm.note-calendar-event</string>
+<key>UTTypeDescription</key><string>Rhythm Note calendar drag payload</string>
 <key>UTTypeConformsTo</key><array><string>public.data</string></array>
 </dict></array>
 <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>Rhythm Note account callback</string><key>CFBundleURLSchemes</key><array><string>rhythmnote</string></array></dict></array>

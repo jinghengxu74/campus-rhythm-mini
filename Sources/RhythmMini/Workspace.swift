@@ -89,6 +89,7 @@ enum NoteTab: String, CaseIterable, Identifiable {
     @Published var selectedDay: String
     @Published var tab: NoteTab = .todo { didSet { cancelDrag() } }
     @Published var dragging: NoteDrag?
+    @Published var calendarDragging: NoteCalendarDragPayload?
     @Published var dropTarget: NoteDropTarget?
     private var subscriptions = Set<AnyCancellable>()
     var statusFilter: NoteStatus {
@@ -168,8 +169,47 @@ enum NoteTab: String, CaseIterable, Identifiable {
         }
     }
     func markComplete(_ id: UUID) { repository.change { $0.markComplete(id) } }
+    func completeFromDrag(_ id: UUID) { repository.change { $0.completeFromDrag(id) } }
     func setStatus(_ id: UUID, _ status: NoteStatus) {
         repository.change { doc in doc.setStatus(id, to: status); if status == .todo { doc.editItem(id) { $0.schedule(on: selectedDay) } } }
+    }
+    func moveTaskToTab(_ id: UUID, destination: NoteTab) {
+        switch destination {
+        case .todo:
+            setStatus(id, .todo)
+            self.tab = .todo
+        case .pending:
+            setStatus(id, .pending)
+            self.tab = .pending
+        case .completed:
+            completeFromDrag(id)
+            self.tab = .completed
+        case .events, .forYou:
+            break
+        }
+    }
+    func beginCalendarDrag(_ payload: NoteCalendarDragPayload) -> NSItemProvider {
+        calendarDragging = payload
+        return noteCalendarDragProvider(payload)
+    }
+    @discardableResult func importAppleCalendarEvent(key: String, title: String, dueDay: String, as status: NoteStatus) -> Bool {
+        guard let category = selectedCategory ?? categories.first?.id else { return false }
+        if document.item(withCalendarKey: key) != nil { return false }
+        var imported = false
+        repository.change { doc in
+            imported = doc.importCalendarEvent(key: key, title: title, category: category, status: status, noteDay: status == .todo ? selectedDay : nil, dueDay: dueDay) != nil
+        }
+        if imported, status == .pending || status == .todo { tab = status == .pending ? .pending : .todo }
+        return imported
+    }
+    func syncAppleCalendarPending(keys: [(key: String, title: String, dueDay: String)]) {
+        guard let category = categories.first?.id else { return }
+        repository.change { doc in
+            for entry in keys {
+                guard doc.item(withCalendarKey: entry.key) == nil else { continue }
+                _ = doc.importCalendarEvent(key: entry.key, title: entry.title, category: category, status: .pending, noteDay: nil, dueDay: entry.dueDay)
+            }
+        }
     }
     func schedule(_ id: UUID, on day: String) { repository.change { $0.editItem(id) { $0.schedule(on: day) } } }
     func setHighlight(_ id: UUID, _ color: String?) { repository.change { $0.editItem(id) { $0.highlight = color } } }

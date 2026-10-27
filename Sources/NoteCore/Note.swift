@@ -28,6 +28,7 @@ public struct NoteItem: Codable, Identifiable, Equatable {
     public var dueMinute: Int?
     public var textColor: String?
     public var highlight: String?
+    public var calendarEventKey: String?
     private var resumeStatus: NoteStatus?
     public var done: Bool { status == .completed }
     public init(id: UUID = UUID(), title: String, done: Bool = false, status: NoteStatus? = nil) {
@@ -73,6 +74,11 @@ public struct NoteItem: Codable, Identifiable, Equatable {
         guard status.isOpen && isChecked else { return }
         setStatus(.completed, at: date)
     }
+    public mutating func completeFromDrag(at date: Date = Date()) {
+        guard status.isOpen else { return }
+        isChecked = true
+        markComplete(at: date)
+    }
     public mutating func rescheduleCompletion(to date: Date?) {
         guard status == .completed else { return }
         completedAt = date.map { Date(timeIntervalSince1970: floor($0.timeIntervalSince1970)) }
@@ -80,7 +86,7 @@ public struct NoteItem: Codable, Identifiable, Equatable {
     public mutating func toggleCompletion() {
         setStatus(done ? (resumeStatus?.isOpen == true ? resumeStatus! : .todo) : .completed)
     }
-    private enum CodingKeys: String, CodingKey { case id, title, done, status, resumeStatus, isChecked, completedAt, scheduledDay, dueDay, dueMonthOnly, dueMinute, textColor, highlight }
+    private enum CodingKeys: String, CodingKey { case id, title, done, status, resumeStatus, isChecked, completedAt, scheduledDay, dueDay, dueMonthOnly, dueMinute, textColor, highlight, calendarEventKey }
     public init(from decoder: Decoder) throws {
         let data = try decoder.container(keyedBy: CodingKeys.self)
         id = try data.decode(UUID.self, forKey: .id)
@@ -93,6 +99,7 @@ public struct NoteItem: Codable, Identifiable, Equatable {
         dueMinute = try data.decodeIfPresent(Int.self, forKey: .dueMinute)
         textColor = try data.decodeIfPresent(String.self, forKey: .textColor)
         highlight = try data.decodeIfPresent(String.self, forKey: .highlight)
+        calendarEventKey = try data.decodeIfPresent(String.self, forKey: .calendarEventKey)
         resumeStatus = try data.decodeIfPresent(NoteStatus.self, forKey: .resumeStatus)
         isChecked = status.isOpen ? try data.decodeIfPresent(Bool.self, forKey: .isChecked) ?? false : false
         if let timestamp = try data.decodeIfPresent(String.self, forKey: .completedAt) {
@@ -114,6 +121,7 @@ public struct NoteItem: Codable, Identifiable, Equatable {
         try data.encodeIfPresent(dueMinute, forKey: .dueMinute)
         try data.encodeIfPresent(textColor, forKey: .textColor)
         try data.encodeIfPresent(highlight, forKey: .highlight)
+        try data.encodeIfPresent(calendarEventKey, forKey: .calendarEventKey)
         try data.encode(isChecked, forKey: .isChecked)
         if let completedAt {
             let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -212,6 +220,21 @@ public struct NoteDocument: Codable, Equatable {
     }
     public mutating func markComplete(_ id: UUID, at date: Date = Date()) {
         for category in categories.indices { if let row = categories[category].items.firstIndex(where: { $0.id == id }) { categories[category].items[row].markComplete(at: date); return } }
+    }
+    public mutating func completeFromDrag(_ id: UUID, at date: Date = Date()) {
+        for category in categories.indices { if let row = categories[category].items.firstIndex(where: { $0.id == id }) { categories[category].items[row].completeFromDrag(at: date); return } }
+    }
+    public func item(withCalendarKey key: String) -> NoteItem? {
+        categories.flatMap(\.items).first { $0.calendarEventKey == key }
+    }
+    @discardableResult public mutating func importCalendarEvent(key: String, title: String, category id: UUID, status: NoteStatus, noteDay: String?, dueDay: String) -> UUID? {
+        guard item(withCalendarKey: key) == nil else { return nil }
+        guard let newID = addItem(title, category: id, status: status, day: noteDay) else { return nil }
+        editItem(newID) { item in
+            item.calendarEventKey = key
+            item.setDeadline(day: dueDay, monthOnly: false)
+        }
+        return newID
     }
     public mutating func reorderCompleted(_ id: UUID, dayID: String, relativeTo anchor: UUID?, after: Bool, calendar: Calendar = .autoupdatingCurrent) {
         guard let location = itemLocation(id), categories[location.category].items[location.row].status == .completed else { return }

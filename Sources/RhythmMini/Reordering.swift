@@ -1,4 +1,5 @@
 import AppKit
+import NoteCore
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -17,6 +18,23 @@ enum NoteDropZone: Equatable {
     case completedHeader(String), completedRow(dayID: String, task: UUID), completedTail(String), completedChart(String)
 }
 private let orderType = UTType(exportedAs: "com.campusrhythm.note-order")
+private let calendarEventType = UTType(exportedAs: "com.campusrhythm.note-calendar-event")
+
+struct NoteCalendarDragPayload: Codable, Equatable {
+    let key: String
+    let title: String
+    let dueDay: String
+}
+
+@MainActor func noteCalendarDragProvider(_ payload: NoteCalendarDragPayload) -> NSItemProvider {
+    let provider = NSItemProvider()
+    provider.registerDataRepresentation(forTypeIdentifier: calendarEventType.identifier, visibility: .ownProcess) { complete in
+        complete((try? JSONEncoder().encode(payload)) ?? Data(), nil)
+        return nil
+    }
+    return provider
+}
+
 
 @MainActor extension Workspace {
     func dragProvider(_ source: NoteDrag) -> NSItemProvider {
@@ -27,7 +45,7 @@ private let orderType = UTType(exportedAs: "com.campusrhythm.note-order")
         }
         return provider
     }
-    func cancelDrag() { dragging = nil; dropTarget = nil }
+    func cancelDrag() { dragging = nil; calendarDragging = nil; dropTarget = nil }
     func applyDrop(_ target: NoteDropTarget) -> Bool {
         guard let source = dragging else { return false }
         switch (source.kind, target) {
@@ -150,12 +168,29 @@ struct NoteStatusDropZone: ViewModifier {
     @State private var targeted = false
     func body(content: Content) -> some View {
         content.contentShape(Rectangle())
-            .onDrop(of: [orderType.identifier], isTargeted: $targeted) { _ in
-                guard let source = workspace.dragging, source.kind == .task, tab == .pending || tab == .todo else { return false }
-                workspace.setStatus(source.id, tab == .pending ? .pending : .todo)
-                workspace.cancelDrag(); workspace.tab = tab
-                return true
+            .onDrop(of: [orderType.identifier, calendarEventType.identifier], isTargeted: $targeted) { _ in
+                if let payload = workspace.calendarDragging {
+                    guard tab == .todo || tab == .pending else { workspace.cancelDrag(); return false }
+                    let status: NoteStatus = tab == .pending ? .pending : .todo
+                    let ok = workspace.importAppleCalendarEvent(key: payload.key, title: payload.title, dueDay: payload.dueDay, as: status)
+                    workspace.cancelDrag()
+                    return ok
+                }
+                guard let source = workspace.dragging, source.kind == .task else { return false }
+                switch tab {
+                case .todo, .pending, .completed:
+                    workspace.moveTaskToTab(source.id, destination: tab)
+                    workspace.cancelDrag()
+                    return true
+                case .events, .forYou:
+                    return false
+                }
             }
-            .overlay { if targeted && workspace.dragging?.kind == .task && (tab == .pending || tab == .todo) { RoundedRectangle(cornerRadius: 8).strokeBorder(.primary.opacity(0.65), lineWidth: 2).allowsHitTesting(false) } }
+            .overlay {
+                let canDrop = tab != .events && tab != .forYou && (workspace.dragging?.kind == .task || workspace.calendarDragging != nil)
+                if targeted && canDrop {
+                    RoundedRectangle(cornerRadius: 8).strokeBorder(.primary.opacity(0.65), lineWidth: 2).allowsHitTesting(false)
+                }
+            }
     }
 }

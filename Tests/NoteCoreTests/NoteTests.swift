@@ -163,6 +163,15 @@ final class NoteTests: XCTestCase {
         note.reorderCategory(group, relativeTo: group)
         XCTAssertEqual(note, before)
     }
+    func testCalendarImportAndDragComplete() {
+        var note = NoteDocument()
+        let group = note.categories[0].id
+        let id = note.importCalendarEvent(key: "cal:evt1", title: "Due essay", category: group, status: .pending, noteDay: nil, dueDay: "2026-10-27")!
+        XCTAssertEqual(note.item(withCalendarKey: "cal:evt1")?.id, id)
+        XCTAssertNil(note.importCalendarEvent(key: "cal:evt1", title: "Duplicate", category: group, status: .pending, noteDay: nil, dueDay: "2026-10-27"))
+        note.completeFromDrag(id)
+        XCTAssertTrue(note.categories[0].items.first(where: { $0.id == id })!.done)
+    }
     func testSectionAndTaskPriorityOrderSurviveRelaunch() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("note.json")
         var note = NoteDocument(); let group = note.categories[2].id
