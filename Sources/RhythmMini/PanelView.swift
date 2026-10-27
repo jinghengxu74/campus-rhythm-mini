@@ -23,6 +23,7 @@ struct MiniPanelView: View {
     @State private var renaming: UUID?
     @State private var renameText = ""
     @State private var hoveredCategory: UUID?
+    @State private var categoryPendingDelete: NoteCategory?
     @FocusState private var inputFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var dateLabel: String { let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = "MMM d, EEE"; return f.string(from: NoteDay.date(workspace.selectedDay) ?? Date()) }
@@ -45,7 +46,7 @@ struct MiniPanelView: View {
                     VStack(alignment: .leading, spacing: 15) {
                         if workspace.tab == .events { eventsList }
                         else if workspace.statusFilter == .completed { completedList }
-                        else { ForEach(workspace.categories) { categoryView($0) } }
+                        else { ForEach(workspace.categoriesVisible(in: workspace.tab)) { categoryView($0) } }
                         if workspace.filteredCount == 0 && workspace.tab.usesTaskList && workspace.statusFilter != .completed {
                             Text(emptyMessage).font(controller.font(size: 11)).foregroundStyle(.secondary).padding(.top, 5)
                         }
@@ -91,6 +92,25 @@ struct MiniPanelView: View {
         .popover(isPresented: $showAppearance, arrowEdge: .top) { NoteAppearanceView(controller: controller) { showAppearance = false } }
         .popover(isPresented: $showAccount, arrowEdge: .top) { NoteAccountView(controller: controller) { showAccount = false } }
         .sheet(isPresented: $showTrash) { NoteTrashView(workspace: workspace, controller: controller) { showTrash = false } }
+        .confirmationDialog(
+            "Delete “\(categoryPendingDelete?.name ?? "")”?",
+            isPresented: Binding(get: { categoryPendingDelete != nil }, set: { if !$0 { categoryPendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete category", role: .destructive) {
+                if let id = categoryPendingDelete?.id { workspace.deleteCategory(id) }
+                categoryPendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) { categoryPendingDelete = nil }
+        } message: {
+            if let group = categoryPendingDelete {
+                if group.items.isEmpty {
+                    Text("This category has no tasks.")
+                } else {
+                    Text("All \(group.items.count) task(s) in every list will move to Recently deleted.")
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .showNoteAccount)) { notice in if notice.object == nil || notice.object as? AppController === controller { showAccount = true } }
         .onChange(of: workspace.selectedDay) { _ in controller.dateChanged() }
         .onChange(of: inputFocused) { controller.editing = $0 }
@@ -190,6 +210,12 @@ struct MiniPanelView: View {
                         }
                     }
                     Divider(); Button("New category…") { newCategory = true; input = ""; inputFocused = true }
+                    if workspace.categories.count > 1 {
+                        Divider()
+                        ForEach(workspace.categories) { group in
+                            Button("Delete “\(group.name)”") { categoryPendingDelete = group }
+                        }
+                    }
                 } label: { Text(workspace.selectedName).font(controller.font(size: 10, weight: .medium)).lineLimit(1).frame(maxWidth: 64) }
                     .menuStyle(.borderlessButton).fixedSize().foregroundStyle(.secondary).help("Choose or create a category")
             }
@@ -223,13 +249,28 @@ struct MiniPanelView: View {
                 if group.collapsed { Text("\(workspace.items(in: group).count)").font(controller.font(size: 9)).foregroundStyle(.secondary) }
                 Spacer()
                 NoteDragHandle(workspace: workspace, source: NoteDrag(kind: .category, id: group.id), name: group.name)
+                if workspace.categories.count > 1 {
+                    Button { categoryPendingDelete = group } label: {
+                        Image(systemName: "trash").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary).frame(width: 22, height: 22)
+                    }
+                    .opacity(hoveredCategory == group.id ? 0.85 : 0.35)
+                    .help("Delete category")
+                    .accessibilityLabel("Delete category " + group.name)
+                }
                 Button { workspace.selectedCategory = group.id; newCategory = false; inputFocused = true } label: {
                     Image(systemName: "plus").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary).frame(width: 22, height: 22)
                 }.opacity(hoveredCategory == group.id ? 1 : 0.45).help("Add to " + group.name).accessibilityLabel("Add to " + group.name)
             }.contextMenu {
                 Button("Rename category…") { renameText = group.name; renaming = group.id }
                 Button("Add a task") { workspace.selectedCategory = group.id; inputFocused = true }
-                if group.items.isEmpty && workspace.categories.count > 1 { Divider(); Button("Remove empty category") { workspace.removeCategory(group.id) } }
+                if workspace.categories.count > 1 {
+                    Divider()
+                    if group.items.isEmpty {
+                        Button("Delete empty category") { workspace.deleteCategory(group.id) }
+                    } else {
+                        Button("Delete category", role: .destructive) { categoryPendingDelete = group }
+                    }
+                }
                 Divider()
                 if let first = workspace.categories.first, first.id != group.id { Button("Move category to top") { workspace.reorderCategory(group.id, relativeTo: first.id) } }
             }.modifier(NoteOrderZone(workspace: workspace, zone: .header(group.id)))

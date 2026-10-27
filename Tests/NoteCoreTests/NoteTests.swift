@@ -163,6 +163,17 @@ final class NoteTests: XCTestCase {
         note.reorderCategory(group, relativeTo: group)
         XCTAssertEqual(note, before)
     }
+    func testDeleteCategoryTrashesTasksAndRequiresAnotherCategory() {
+        var note = NoteDocument()
+        let extra = note.addCategory("archive")!
+        let task = note.addItem("Old", category: extra, status: .todo, day: "2026-10-27")!
+        XCTAssertTrue(note.deleteCategory(extra))
+        XCTAssertFalse(note.categories.contains(where: { $0.id == extra }))
+        XCTAssertEqual(note.trash.count, 1)
+        XCTAssertEqual(note.trash[0].item.id, task)
+        while note.categories.count > 1 { XCTAssertTrue(note.deleteCategory(note.categories.last!.id)) }
+        XCTAssertFalse(note.deleteCategory(note.categories[0].id))
+    }
     func testCalendarImportAndDragComplete() {
         var note = NoteDocument()
         let group = note.categories[0].id

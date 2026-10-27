@@ -224,6 +224,14 @@ enum NoteTab: String, CaseIterable, Identifiable {
     func purgeTrash(_ id: UUID) { repository.change { $0.purgeFromTrash(id) } }
     func emptyTrash() { repository.change { $0.emptyTrash() } }
     func move(_ id: UUID, to destination: UUID) { reorderItem(id, to: destination) }
-    func removeCategory(_ id: UUID) { repository.change { doc in if doc.categories.count > 1 { doc.categories.removeAll { $0.id == id && $0.items.isEmpty } } } }
+    func removeCategory(_ id: UUID) { repository.change { _ = $0.removeEmptyCategory(id) } }
+    func deleteCategory(_ id: UUID) {
+        repository.change { _ = $0.deleteCategory(id) }
+        if !categories.contains(where: { $0.id == selectedCategory }) { selectedCategory = categories.first?.id }
+    }
+    func categoriesVisible(in tab: NoteTab) -> [NoteCategory] {
+        guard tab == .todo || tab == .pending else { return categories }
+        return categories.filter { !items(in: $0).isEmpty }
+    }
     func undo() { repository.undo() }
 }

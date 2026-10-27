@@ -299,6 +299,22 @@ public struct NoteDocument: Codable, Equatable {
         guard !name.isEmpty, name.count <= 60, !categories.contains(where: { $0.id != id && $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }), let index = categories.firstIndex(where: { $0.id == id }) else { return }
         categories[index].name = name
     }
+    @discardableResult public mutating func removeEmptyCategory(_ id: UUID) -> Bool {
+        guard categories.count > 1, let index = categories.firstIndex(where: { $0.id == id }), categories[index].items.isEmpty else { return false }
+        categories.remove(at: index)
+        return true
+    }
+    @discardableResult public mutating func deleteCategory(_ id: UUID, at date: Date = Date()) -> Bool {
+        guard categories.count > 1, categories.contains(where: { $0.id == id }) else { return false }
+        if let index = categories.firstIndex(where: { $0.id == id }), categories[index].items.isEmpty {
+            categories.remove(at: index)
+            return true
+        }
+        let ids = categories.first(where: { $0.id == id })?.items.map(\.id) ?? []
+        for taskID in ids { _ = moveItemToTrash(taskID, at: date) }
+        categories.removeAll { $0.id == id }
+        return true
+    }
     public mutating func renameItem(_ id: UUID, to input: String) {
         let title = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, title.count <= 1000 else { return }
