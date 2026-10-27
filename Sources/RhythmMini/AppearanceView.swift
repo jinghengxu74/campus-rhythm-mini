@@ -44,15 +44,11 @@ struct NoteAppearanceView: View {
                                 controller.inkHex = skin.ink
                                 controller.glassFinish = skin.finish
                             } label: {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .fill(Color(noteHex: skin.paper))
-                                        .overlay(Text("Aa").font(controller.font(size: 9)).foregroundStyle(Color(noteHex: skin.ink)).padding(.leading, 5), alignment: .leading)
-                                        .frame(width: 72, height: 22)
-                                    Text(skin.title).font(controller.font(size: 8)).lineLimit(1)
-                                }
-                                .padding(5)
-                                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 7))
+                                NoteDeskSkinChip(
+                                    skin: skin,
+                                    selected: controller.paperHex == skin.paper && controller.inkHex == skin.ink && controller.theme == skin.theme,
+                                    font: controller.font
+                                )
                             }
                             .accessibilityLabel(skin.title + " desk skin")
                         }
@@ -162,6 +158,7 @@ struct NoteAppearanceView: View {
                 .fill(.ultraThinMaterial)
                 .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .environment(\.colorScheme, controller.theme.scheme)
     }
 

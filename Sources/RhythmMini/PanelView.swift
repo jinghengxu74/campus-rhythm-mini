@@ -74,11 +74,6 @@ struct MiniPanelView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: workspace.tab)
         .buttonStyle(.plain).font(controller.font(size: 12)).foregroundStyle(controller.ink).tint(controller.ink)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            RoundedRectangle(cornerRadius: controller.edgeStyle.corner, style: .continuous)
-                .fill(Color(nsColor: controller.paper).opacity(controller.backdropOpacity))
-        }
-        .clipShape(RoundedRectangle(cornerRadius: controller.edgeStyle.corner, style: .continuous))
         .simultaneousGesture(foldUpGesture)
         .overlay(alignment: .top) { NoteResizeArea(controller: controller, edges: .top).frame(height: 5).padding(.horizontal, 14) }
         .overlay(alignment: .bottom) { NoteResizeArea(controller: controller, edges: .bottom).frame(height: 5).padding(.horizontal, 14) }

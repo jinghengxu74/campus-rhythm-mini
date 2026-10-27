@@ -475,7 +475,7 @@ struct NoteCircle: View {
     @ObservedObject var controller: AppController
     var body: some View {
         ZStack {
-            NoteLiquidGlassOrb(theme: controller.theme)
+            NoteLiquidGlassOrb(theme: controller.theme, paper: Color(nsColor: controller.paper))
             Text("\(workspace.openCount)")
                 .font(controller.font(size: 12, weight: .semibold))
                 .foregroundStyle(controller.theme == .dark ? Color.white.opacity(0.9) : Color(white: 0.1).opacity(0.88))
