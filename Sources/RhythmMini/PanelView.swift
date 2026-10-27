@@ -22,6 +22,7 @@ struct MiniPanelView: View {
     @State private var showDate = false
     @State private var hoveringDate = false
     @ObservedObject private var account = AccountConnection.shared
+    @ObservedObject private var updates = UpdateChecker.shared
     @State private var renaming: UUID?
     @State private var renameText = ""
     @State private var hoveredCategory: UUID?
@@ -40,6 +41,7 @@ struct MiniPanelView: View {
         VStack(spacing: 0) {
             header
             statusTabs
+            updateNotice
             if workspace.tab == .pending {
                 Toggle("Show Apple to-dos", isOn: $showApplePendingTodos)
                     .font(controller.font(size: 12))
@@ -117,7 +119,10 @@ struct MiniPanelView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .showNoteAccount)) { notice in if notice.object == nil || notice.object as? AppController === controller { showAccount = true } }
-        .onAppear { refreshAppleDeadlines() }
+        .onAppear {
+            refreshAppleDeadlines()
+            Task { await updates.check() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in refreshAppleDeadlines() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refreshAppleDeadlines() }
         .onChange(of: workspace.selectedDay) { _ in controller.dateChanged() }
@@ -127,13 +132,41 @@ struct MiniPanelView: View {
         .onExitCommand { if newCategory || !input.isEmpty { newCategory = false; input = ""; inputFocused = false } else { controller.minimizeToMenuBar() } }
     }
 
+    @ViewBuilder private var updateNotice: some View {
+        if let release = updates.availableRelease {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.down.circle.fill").foregroundStyle(controller.ink.opacity(0.65))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Rhythm Note \(release.tagName) is available").font(controller.font(size: 11, weight: .semibold))
+                    Text("Download the latest Mac build on GitHub.").font(controller.font(size: 10)).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("View") { updates.openAvailableRelease() }.font(controller.font(size: 10, weight: .semibold))
+                Button { updates.dismiss() } label: { Image(systemName: "xmark").font(.system(size: 9)) }
+                    .accessibilityLabel("Dismiss update notice")
+            }
+            .padding(10)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.white.opacity(0.35), lineWidth: 0.5))
+            .padding(.horizontal, 12).padding(.top, 8)
+        } else if let message = updates.statusMessage {
+            HStack {
+                Text(message).font(controller.font(size: 10)).foregroundStyle(.secondary)
+                Spacer()
+                Button { updates.dismiss() } label: { Image(systemName: "xmark").font(.system(size: 9)) }
+                    .accessibilityLabel("Dismiss update status")
+            }
+            .padding(.horizontal, 20).padding(.top, 8)
+        }
+    }
+
     private var header: some View {
         HStack(spacing: 8) {
             HStack(spacing: 8) {
             Menu {
                 Button(appVersionLabel) {}.disabled(true)
                 Button("Check for updates…") {
-                    NSWorkspace.shared.open(URL(string: "https://github.com/jinghengxu74/campus-rhythm-mini/releases/latest")!)
+                    Task { await updates.check(force: true) }
                 }
                 Divider()
                 Button("Minimize to menu bar") { controller.minimizeToMenuBar() }
@@ -341,23 +374,74 @@ struct MiniPanelView: View {
             .zIndex(1)
     }
 
-    /// Trackpad horizontal scroll: 8 pages, right edge = today, left edge = 7 days earlier.
+    /// Trackpad horizontal scroll: 56 daily bars, right edge = today, snapped one day at a time.
     private var weekCompleted: some View {
         GeometryReader { geo in
-            let pageWidth = max(geo.size.width, 1)
-            let maxScrollX = pageWidth * 7
-            ZStack(alignment: .leading) {
-                HStack(spacing: 0) {
-                    ForEach(-7...0, id: \.self) { endOffset in
-                        completedWeekChartPage(endOffset: endOffset)
-                            .frame(width: pageWidth)
+            let viewportWidth = max(geo.size.width, 1)
+            let dayWidth = viewportWidth / 7
+            let maxScrollX = dayWidth * CGFloat(CompletedChartWindow.maximumStartIndex)
+            let visibleEndOffset = CompletedChartWindow.endOffset(scrollX: completedChartScrollX, dayWidth: dayWidth)
+            let visibleDays = completedChartDays(endOffset: visibleEndOffset)
+            let visibleCounts = completedCounts(for: visibleDays)
+            let peak = max(visibleCounts.max() ?? 1, 1)
+            let days = completedChartRange()
+            let counts = completedCounts(for: days)
+            let weekdayFormatter: DateFormatter = {
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "en_US")
+                formatter.dateFormat = "EEE"
+                return formatter
+            }()
+            VStack(alignment: .leading, spacing: 6) {
+                Text(completedChartTitle(total: visibleCounts.reduce(0, +), days: visibleDays, endOffset: visibleEndOffset))
+                    .font(controller.font(size: 11, weight: .semibold))
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                ZStack(alignment: .leading) {
+                    HStack(alignment: .bottom, spacing: 0) {
+                        ForEach(Array(days.enumerated()), id: \.offset) { index, day in
+                            let barHovered = weekBarHovered(pageEndOffset: 0, index: index)
+                            VStack(spacing: 3) {
+                                Text(counts[index] == 0 ? "" : "\(counts[index])")
+                                    .font(controller.font(size: 9, weight: barHovered ? .semibold : .regular))
+                                    .foregroundStyle(controller.ink.opacity(barHovered ? 1 : 0.5))
+                                weekStackedBar(day: day, total: counts[index], peak: peak, index: index, pageEndOffset: 0)
+                                Text(weekdayFormatter.string(from: day))
+                                    .font(controller.font(size: 9, weight: barHovered ? .semibold : .regular))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 3)
+                            .frame(width: dayWidth)
+                            .overlay(alignment: index >= 4 ? .topTrailing : .topLeading) {
+                                if barHovered {
+                                    weekGlassTip(day)
+                                        .fixedSize(horizontal: true, vertical: true)
+                                        .offset(x: index >= 4 ? -4 : 14, y: -28)
+                                }
+                            }
+                            .zIndex(barHovered ? 2 : 0)
+                            .modifier(NoteOrderZone(workspace: workspace, zone: .completedChart(completedDayID(for: day))))
+                            .onHover { hovering in
+                                withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.78)) {
+                                    if hovering {
+                                        hoveredWeekBar = (0, index)
+                                    } else if weekBarHovered(pageEndOffset: 0, index: index) {
+                                        hoveredWeekBar = nil
+                                    }
+                                }
+                            }
+                            .onTapGesture { jumpToCompletedDay(day) }
+                            .help("Jump to done list for this day")
+                        }
                     }
+                    .offset(x: -completedChartScrollX)
                 }
-                .offset(x: -completedChartScrollX)
+                .frame(width: viewportWidth, height: 58, alignment: .leading)
+                .clipped()
+                .padding(.top, 4)
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
-            .clipped()
-            .onAppear { syncCompletedChartScroll(for: pageWidth) }
+            .onAppear { syncCompletedChartScroll(for: viewportWidth) }
             .onChange(of: geo.size.width) { width in
                 syncCompletedChartScroll(for: max(width, 1))
             }
@@ -368,10 +452,10 @@ struct MiniPanelView: View {
                         completedChartScrollX = min(maxScrollX, max(0, completedChartScrollX - delta))
                     },
                     onScrollEnd: {
-                        guard pageWidth > 1 else { return }
-                        let page = round(completedChartScrollX / pageWidth)
+                        guard dayWidth > 1 else { return }
+                        let day = round(completedChartScrollX / dayWidth)
                         withAnimation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.88)) {
-                            completedChartScrollX = min(maxScrollX, max(0, page * pageWidth))
+                            completedChartScrollX = min(maxScrollX, max(0, day * dayWidth))
                         }
                     }
                 )
@@ -380,7 +464,7 @@ struct MiniPanelView: View {
         }
         .frame(height: 108)
         .accessibilityLabel("Completed tasks chart")
-        .accessibilityHint("Two-finger swipe horizontally to browse earlier weeks. Tap a day bar to jump to that day in the list below.")
+        .accessibilityHint("Two-finger swipe horizontally to browse one day at a time. The title totals the seven visible days. Tap a day bar to jump to that day in the list below.")
     }
 
     private func syncCompletedChartScroll(for pageWidth: CGFloat) {
@@ -396,56 +480,11 @@ struct MiniPanelView: View {
         }
     }
 
-    private func completedWeekChartPage(endOffset: Int) -> some View {
-        let days = completedChartDays(endOffset: endOffset)
-        let counts = completedCounts(for: days)
-        let peak = max(counts.max() ?? 1, 1)
-        let total = counts.reduce(0, +)
-        let weekdayFormatter = DateFormatter()
-        weekdayFormatter.locale = Locale(identifier: "en_US")
-        weekdayFormatter.dateFormat = "EEE"
-        return VStack(alignment: .leading, spacing: 6) {
-            Text(completedChartTitle(total: total, days: days, endOffset: endOffset))
-                .font(controller.font(size: 11, weight: .semibold))
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(alignment: .bottom, spacing: 6) {
-                ForEach(Array(days.enumerated()), id: \.offset) { index, day in
-                    let barHovered = weekBarHovered(pageEndOffset: endOffset, index: index)
-                    VStack(spacing: 3) {
-                        Text(counts[index] == 0 ? "" : "\(counts[index])")
-                            .font(controller.font(size: 9, weight: barHovered ? .semibold : .regular))
-                            .foregroundStyle(controller.ink.opacity(barHovered ? 1 : 0.5))
-                        weekStackedBar(day: day, total: counts[index], peak: peak, index: index, pageEndOffset: endOffset)
-                        Text(weekdayFormatter.string(from: day))
-                            .font(controller.font(size: 9, weight: barHovered ? .semibold : .regular))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .overlay(alignment: index >= 4 ? .topTrailing : .topLeading) {
-                        if barHovered {
-                            weekGlassTip(day)
-                                .fixedSize(horizontal: true, vertical: true)
-                                .offset(x: index >= 4 ? -4 : 14, y: -28)
-                        }
-                    }
-                    .zIndex(barHovered ? 2 : 0)
-                    .modifier(NoteOrderZone(workspace: workspace, zone: .completedChart(completedDayID(for: day))))
-                    .onHover { hovering in
-                        withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.78)) {
-                            if hovering {
-                                hoveredWeekBar = (endOffset, index)
-                            } else if weekBarHovered(pageEndOffset: endOffset, index: index) {
-                                hoveredWeekBar = nil
-                            }
-                        }
-                    }
-                    .onTapGesture { jumpToCompletedDay(day) }
-                    .help("Jump to done list for this day")
-                }
-            }
-            .frame(height: 58)
-            .padding(.top, 4)
+    private func completedChartRange() -> [Date] {
+        let calendar = Calendar.autoupdatingCurrent
+        let today = calendar.startOfDay(for: Date())
+        return (0..<CompletedChartWindow.totalDayCount).compactMap {
+            calendar.date(byAdding: .day, value: $0 - (CompletedChartWindow.totalDayCount - 1), to: today)
         }
     }
 
@@ -679,7 +718,7 @@ private struct NoteRow: View {
                     RoundedRectangle(cornerRadius: 3).strokeBorder(.primary.opacity(checked ? 0 : 0.32), lineWidth: 1)
                     if checked { RoundedRectangle(cornerRadius: 3).fill(controller.ink); Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(controller.theme == .dark ? .black : .white) }
                     if item.status == .cancelled { Image(systemName: "minus").font(.system(size: 8, weight: .medium)).foregroundStyle(.secondary) }
-                }.frame(width: 13, height: 13).frame(width: 24, height: 24).contentShape(Rectangle())
+                }.frame(width: 13, height: 13).offset(y: -3).frame(width: 24, height: 24).contentShape(Rectangle())
             }.accessibilityLabel((item.done ? "Reopen " : item.isChecked ? "Uncheck " : "Check off ") + item.title)
                 .accessibilityValue(item.done ? "Completed" : item.isChecked ? "Checked, awaiting Mark complete" : "Not checked")
             if editing {

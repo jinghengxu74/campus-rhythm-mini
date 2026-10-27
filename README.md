@@ -6,7 +6,7 @@
 
 - **To-do** starts on the selected calendar day and carries forward until Mark complete; a tick alone is still an unconfirmed draft. The same record keeps its original day, order, colors and ID. Future tasks stay hidden before their start day. Hover the date to reveal navigation, click it for a date picker, or use **… → Open next day in new window**. Windows share the same saved document while keeping their own date and tab. A Today window follows the local day at midnight; deliberately selected past/future days stay selected.
 - **Pending** is an undated inbox: ideas you have in mind, without a made-up due date. Right-click a task to move it to today, tomorrow or the selected day.
-- **Completed** groups confirmed completions by their actual local completion day. Tick first to cross out a task, then choose **Mark complete**. Reopening restores its prior open status. Older records without a timestamp remain explicitly undated.
+- **Completed** groups confirmed completions by their actual local completion day. Tick first to cross out a task, then choose **Mark complete**. Reopening restores its prior open status. Older records without a timestamp remain explicitly undated. The chart scrolls continuously one day at a time across 56 days; its fixed title recalculates the total for the seven currently visible days.
 - **Events** reads your Campus Rhythm calendar for the selected day after account connection. It displays event times in the Mac’s current time zone, retaining all-day dates.
 - Custom categories, folding, task/category priority ordering, editing and undo remain available. Day selection is the start of a work intention, not an assessment deadline or a calendar booking.
 
@@ -17,6 +17,10 @@
 The circle-with-dot control folds the note into a 32 pt circle. Drag it anywhere; only a click unfolds it. The circle tooltip identifies its date. Drag the header grip to move a full note, and the bottom-right grip to resize it. Pinning controls whether other windows can cover it. Extra windows can be closed without deleting their tasks; the menu bar keeps the app available.
 
 Native Liquid Glass is used on macOS 26+. Earlier macOS versions use a native visual-effect fallback. Minimal removes the glass rim and native window shadow. Typography includes system monospaced, SF Pro, New York and locally installed STKaiti; no font is downloaded.
+
+## Updates
+
+Rhythm Note checks the public GitHub latest release once every 24 hours while the app is open. **… → Check for updates…** checks immediately. When a newer version exists, a dismissible notice in the note opens the release page; the app does not download or replace itself. Automatic network failures stay quiet, while a manual check reports connection or response errors. Downloads remain ad-hoc signed rather than notarized, so a new install may still need right-click → Open. Versions before 0.9.58 do not have the in-app notice and must be updated manually once.
 
 ## Connect your account
 
