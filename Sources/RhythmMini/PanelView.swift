@@ -12,13 +12,8 @@ struct MiniPanelView: View {
     @State private var showAppearance = false
     @State private var showAccount = false
     @State private var showTrash = false
-    @State private var showAssistant = false
-    @AppStorage("noteRhythmEnabled") private var rhythmEnabled = true
-    @AppStorage("noteRhythmLift") private var rhythmLift = 70.0
-    @State private var liftAtDragStart: Double?
-    @StateObject private var dictate = RhythmSpeech()
-    @State private var dictating = false
     @State private var hoveredWeekBar: (page: Int, bar: Int)?
+    @State private var completedListScrollTarget: String?
     @State private var completedChartViewportWidth: CGFloat = 0
     @State private var completedChartScrollX: CGFloat = 0
     @State private var completedChartDidAnchorToday = false
@@ -36,6 +31,7 @@ struct MiniPanelView: View {
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         return "Rhythm Note \(version) · build \(build)"
     }
+    private var chartPaperOpacity: Double { controller.backdropOpacity }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,31 +40,45 @@ struct MiniPanelView: View {
             if workspace.tab != .events && workspace.statusFilter == .completed {
                 completedChartSection
             }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 15) {
-                    if workspace.tab == .events { eventsList }
-                    else if workspace.statusFilter == .completed { completedList }
-                    else { ForEach(workspace.categories) { categoryView($0) } }
-                    if workspace.filteredCount == 0 && workspace.tab.usesTaskList && workspace.statusFilter != .completed {
-                        Text(emptyMessage).font(controller.font(size: 11)).foregroundStyle(.secondary).padding(.top, 5)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 15) {
+                        if workspace.tab == .events { eventsList }
+                        else if workspace.statusFilter == .completed { completedList }
+                        else { ForEach(workspace.categories) { categoryView($0) } }
+                        if workspace.filteredCount == 0 && workspace.tab.usesTaskList && workspace.statusFilter != .completed {
+                            Text(emptyMessage).font(controller.font(size: 11)).foregroundStyle(.secondary).padding(.top, 5)
+                        }
+                        if !workspace.error.isEmpty {
+                            Text(workspace.error).font(controller.font(size: 11)).foregroundStyle(.red).padding(.top, 5)
+                        }
                     }
-                    if !workspace.error.isEmpty {
-                        Text(workspace.error).font(controller.font(size: 11)).foregroundStyle(.red).padding(.top, 5)
-                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.top, workspace.statusFilter == .completed ? 10 : 15)
+                    .padding(.bottom, 16)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.top, workspace.statusFilter == .completed ? 10 : 15)
-                .padding(.bottom, 16)
+                .frame(maxHeight: .infinity)
+                .clipped()
+                .onChange(of: completedListScrollTarget) { target in
+                    guard let target else { return }
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86)) {
+                        proxy.scrollTo(target, anchor: .top)
+                    }
+                    completedListScrollTarget = nil
+                }
             }
-            .frame(maxHeight: .infinity)
-            .clipped()
             if workspace.tab == .todo || workspace.tab == .pending { composer }
         }
         .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: workspace.tab)
         .buttonStyle(.plain).font(controller.font(size: 12)).foregroundStyle(controller.ink).tint(controller.ink)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            RoundedRectangle(cornerRadius: controller.edgeStyle.corner, style: .continuous)
+                .fill(Color(nsColor: controller.paper).opacity(controller.backdropOpacity))
+        }
         .clipShape(RoundedRectangle(cornerRadius: controller.edgeStyle.corner, style: .continuous))
+        .simultaneousGesture(foldUpGesture)
         .overlay(alignment: .top) { NoteResizeArea(controller: controller, edges: .top).frame(height: 5).padding(.horizontal, 14) }
         .overlay(alignment: .bottom) { NoteResizeArea(controller: controller, edges: .bottom).frame(height: 5).padding(.horizontal, 14) }
         .overlay(alignment: .leading) { NoteResizeArea(controller: controller, edges: .left).frame(width: 5).padding(.vertical, 14) }
@@ -86,50 +96,7 @@ struct MiniPanelView: View {
         .onChange(of: inputFocused) { controller.editing = $0 }
         .onReceive(NotificationCenter.default.publisher(for: .captureNoteTask)) { _ in newCategory = false; inputFocused = true }
         .onReceive(NotificationCenter.default.publisher(for: .addNoteCategory)) { notice in if notice.object == nil || notice.object as? AppController === controller { newCategory = true; input = ""; inputFocused = true } }
-        .onExitCommand { if showAssistant { showAssistant = false } else if newCategory || !input.isEmpty { newCategory = false; input = ""; inputFocused = false } else { controller.minimizeToMenuBar() } }
-        .onReceive(NotificationCenter.default.publisher(for: .showNoteAssistant)) { _ in if rhythmEnabled { showAssistant = true } }
-        .onChange(of: dictate.heard) { value in
-            let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty { input = SpokenTask.title(from: text, today: NoteDay.key()); inputFocused = true }
-        }
-        .onDisappear { dictate.stop(); dictating = false }
-        .overlay(alignment: .bottomTrailing) {
-            if rhythmEnabled && showAssistant {
-                NoteAssistantView(workspace: workspace, account: account, controller: controller) { showAssistant = false }
-                    .frame(maxWidth: 340)
-            } else if rhythmEnabled {
-                Button { showAssistant = true } label: {
-                    ZStack {
-                        Circle().fill(controller.theme == .dark ? Color.white.opacity(0.06) : Color.white.opacity(0.22))
-                        Circle().strokeBorder(
-                            LinearGradient(colors: [Color.white.opacity(0.85), Color.white.opacity(0.12), Color.white.opacity(0.4)], startPoint: .top, endPoint: .bottom),
-                            lineWidth: 1
-                        )
-                        Ellipse()
-                            .fill(LinearGradient(colors: [Color.white.opacity(0.45), .clear], startPoint: .top, endPoint: .bottom))
-                            .frame(width: 22, height: 10)
-                            .offset(y: -12)
-                            .allowsHitTesting(false)
-                        Image(systemName: "sparkles").font(.system(size: 13, weight: .semibold)).foregroundStyle(controller.ink.opacity(0.9))
-                    }
-                    .frame(width: 44, height: 44)
-                    .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
-                }
-                .buttonStyle(.plain)
-                .padding(.trailing, 14)
-                .padding(.bottom, 14)
-                .offset(y: -rhythmLift)
-                .gesture(DragGesture(minimumDistance: 10).onChanged { value in
-                    if liftAtDragStart == nil { liftAtDragStart = rhythmLift }
-                    rhythmLift = min(460, max(0, (liftAtDragStart ?? 0) - value.translation.height))
-                }.onEnded { _ in liftAtDragStart = nil })
-                .contextMenu {
-                    Button("Turn off Rhythm") { rhythmEnabled = false; showAssistant = false }
-                }
-                .help("Rhythm · drag up or down · right-click to turn off")
-                .accessibilityLabel("Open Rhythm")
-            }
-        }
+        .onExitCommand { if newCategory || !input.isEmpty { newCategory = false; input = ""; inputFocused = false } else { controller.minimizeToMenuBar() } }
     }
 
     private var header: some View {
@@ -142,7 +109,7 @@ struct MiniPanelView: View {
                 }
                 Divider()
                 Button("Minimize to menu bar") { controller.minimizeToMenuBar() }
-                Button("Fold into circle") { controller.collapse() }
+                Button("Fold into circle") { controller.collapse(animated: true) }
                 Button("Undo last change") { workspace.undo() }.disabled(!workspace.canUndo)
                 Button(workspace.trash.isEmpty ? "Recently deleted" : "Recently deleted (\(workspace.trash.count))") { showTrash = true }
                 Divider()
@@ -160,8 +127,6 @@ struct MiniPanelView: View {
                 }
                 Button("Open next day in new window") { controller.newWindow(day: NoteDay.offset(workspace.selectedDay, by: 1)) }
                 Button(account.connected ? "Account · " + (account.email ?? "Connected") : "Connect account…") { showAccount = true }
-                Button(rhythmEnabled ? "Turn off Rhythm" : "Turn on Rhythm") { rhythmEnabled.toggle(); if !rhythmEnabled { showAssistant = false } }
-                Button("Rhythm…") { showAssistant = true }.disabled(!rhythmEnabled)
                 Button("Canvas updates…") { NSWorkspace.shared.open(URL(string: "https://campus-rhythm-one.vercel.app/source-updates")!) }
                 Button("Reset note size") { controller.resetSize() }
                 Button("Close this note window") { controller.closeNoteWindow() }
@@ -186,9 +151,9 @@ struct MiniPanelView: View {
             Button { controller.togglePin() } label: {
                 Image(systemName: controller.pinned ? "pin.circle.fill" : "pin.circle").font(.system(size: 14))
                     .foregroundStyle(controller.ink.opacity(controller.pinned ? 0.85 : 0.5)).frame(width: 20, height: 22)
-            }.help(controller.pinned ? "Unpin · allow other windows in front" : "Pin · keep on top")
+            }.help(controller.pinned ? "Unpin · note can fold when you click away" : "Pin · stay open and on top")
                 .accessibilityLabel(controller.pinned ? "Unpin note" : "Pin note")
-            Button { controller.collapse() } label: {
+            Button { controller.collapse(animated: true) } label: {
                 Image(systemName: "smallcircle.filled.circle").font(.system(size: 13, weight: .medium))
                     .foregroundStyle(controller.ink.opacity(0.58))
                     .frame(width: 24, height: 26).contentShape(Rectangle())
@@ -201,66 +166,6 @@ struct MiniPanelView: View {
     private var statusTabs: some View {
         NoteLiquidSegmentBar(tabs: NoteTab.allCases.filter { $0 != .forYou }, selection: $workspace.tab, font: controller.font, ink: controller.ink, reduceMotion: reduceMotion)
             .padding(.horizontal, 12).padding(.bottom, 2)
-    }
-
-    private var forYouList: some View {
-        let cards = workspace.currentRecommendations(planTasks: account.planTasks, events: workspace.events)
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Smart picks").font(controller.font(size: 12, weight: .semibold))
-                Spacer()
-                if account.busy { ProgressView().controlSize(.small) }
-            }
-            Text("Based on your synced plan and sticky to-dos. Canvas announcements are reviewed on the web first — nothing is added silently.")
-                .font(controller.font(size: 10)).foregroundStyle(.secondary)
-            ForEach(cards) { card in recommendationCard(card) }
-            HStack(spacing: 8) {
-                Button { NSWorkspace.shared.open(URL(string: "https://campus-rhythm-one.vercel.app/source-updates")!) } label: {
-                    Label("Canvas inbox", systemImage: "tray.full")
-                        .font(controller.font(size: 10, weight: .medium))
-                        .frame(maxWidth: .infinity).padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                Button { Task { await account.setRemindersEnabled(!NoteNotifications.enabled) } } label: {
-                    Label(NoteNotifications.enabled ? "Reminders on" : "Reminders off", systemImage: NoteNotifications.enabled ? "bell.fill" : "bell")
-                        .font(controller.font(size: 10, weight: .medium))
-                        .frame(maxWidth: .infinity).padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-            }
-            if !account.connected {
-                Text("Connect Account to sync deadlines from Campus Rhythm and Canvas maintenance.")
-                    .font(controller.font(size: 10)).foregroundStyle(.secondary)
-                Button("Connect account") { showAccount = true }.font(controller.font(size: 11))
-            } else {
-                Text(account.status).font(controller.font(size: 9)).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func recommendationCard(_ card: NoteRecommendation) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: icon(for: card.kind)).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                Text(card.title).font(controller.font(size: 12, weight: .medium))
-            }
-            Text(card.detail).font(controller.font(size: 10)).foregroundStyle(.secondary)
-            Text(card.reason).font(controller.font(size: 9)).foregroundStyle(.tertiary)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.28), lineWidth: 0.5))
-    }
-
-    private func icon(for kind: NoteRecommendation.Kind) -> String {
-        switch kind {
-        case .deadline: return "exclamationmark.circle"
-        case .plan: return "calendar.badge.clock"
-        case .canvas: return "graduationcap"
-        case .sticky: return "checklist"
-        case .clear: return "sparkles"
-        }
     }
 
     private var composer: some View {
@@ -287,17 +192,6 @@ struct MiniPanelView: View {
                     Divider(); Button("New category…") { newCategory = true; input = ""; inputFocused = true }
                 } label: { Text(workspace.selectedName).font(controller.font(size: 10, weight: .medium)).lineLimit(1).frame(maxWidth: 64) }
                     .menuStyle(.borderlessButton).fixedSize().foregroundStyle(.secondary).help("Choose or create a category")
-                Button { toggleDictation() } label: {
-                    Image(systemName: dictating ? "stop.fill" : "mic")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(controller.ink.opacity(dictating ? 1 : 0.72))
-                        .frame(width: 26, height: 26)
-                        .background(controller.theme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.35), in: Circle())
-                        .overlay(Circle().strokeBorder(Color.white.opacity(controller.theme == .dark ? 0.28 : 0.7), lineWidth: 0.7))
-                }
-                .buttonStyle(.plain)
-                .help(dictating ? "Stop dictation" : "Dictate in your Mac language")
-                .accessibilityLabel(dictating ? "Stop dictation" : "Dictate a task")
             }
             Button(action: submit) {
                 Image(systemName: "plus").font(.system(size: 11, weight: .medium)).frame(width: 18, height: 24)
@@ -399,7 +293,7 @@ struct MiniPanelView: View {
             .padding(.top, 12)
             .padding(.bottom, 8)
             .frame(maxWidth: .infinity)
-            .background(Color(nsColor: controller.paper).opacity(max(0.88, controller.backgroundOpacity)))
+            .background(Color(nsColor: controller.paper).opacity(chartPaperOpacity))
             .overlay(alignment: .bottom) {
                 Rectangle().fill(controller.ink.opacity(0.08)).frame(height: 1)
             }
@@ -426,7 +320,7 @@ struct MiniPanelView: View {
             .onChange(of: geo.size.width) { width in
                 syncCompletedChartScroll(for: max(width, 1))
             }
-            .overlay {
+            .background {
                 NoteChartHorizontalWheelCapture(
                     onScroll: { delta in
                         guard maxScrollX > 0 else { return }
@@ -435,16 +329,17 @@ struct MiniPanelView: View {
                     onScrollEnd: {
                         guard pageWidth > 1 else { return }
                         let page = round(completedChartScrollX / pageWidth)
-                        withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86)) {
+                        withAnimation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.88)) {
                             completedChartScrollX = min(maxScrollX, max(0, page * pageWidth))
                         }
                     }
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(height: 108)
         .accessibilityLabel("Completed tasks chart")
-        .accessibilityHint("Two-finger swipe left or right to browse earlier weeks")
+        .accessibilityHint("Two-finger swipe horizontally to browse earlier weeks. Tap a day bar to jump to that day in the list below.")
     }
 
     private func syncCompletedChartScroll(for pageWidth: CGFloat) {
@@ -504,6 +399,8 @@ struct MiniPanelView: View {
                             }
                         }
                     }
+                    .onTapGesture { jumpToCompletedDay(day) }
+                    .help("Jump to done list for this day")
                 }
             }
             .frame(height: 58)
@@ -620,6 +517,18 @@ struct MiniPanelView: View {
         let entries = workspace.completedDays.first { $0.day.map { calendar.isDate($0, inSameDayAs: day) } ?? false }?.entries ?? []
         return Dictionary(grouping: entries, by: \.categoryName).map { ($0.key, $0.value.count) }.sorted { $0.0.localizedCaseInsensitiveCompare($1.0) == .orderedAscending }
     }
+    private func jumpToCompletedDay(_ date: Date) {
+        let id = completedDayID(for: date)
+        let found = workspace.completedDays.contains(where: { $0.id == id })
+        // #region agent log
+        AgentDebugLog.emit(hypothesisId: "D", location: "PanelView:jumpToCompletedDay", message: found ? "scroll target set" : "no completed section for day", data: [
+            "dayID": id,
+            "completedDayCount": String(workspace.completedDays.count),
+        ])
+        // #endregion
+        if found { completedListScrollTarget = id }
+    }
+
     private func completedDay(_ day: CompletedDay) -> some View {
         let dayID = day.id
         return VStack(alignment: .leading, spacing: 6) {
@@ -650,6 +559,7 @@ struct MiniPanelView: View {
             Color.clear.frame(height: 4)
                 .modifier(NoteOrderZone(workspace: workspace, zone: .completedTail(dayID)))
         }
+        .id(dayID)
     }
     private func completedDayID(for day: Date) -> String {
         String(Calendar.autoupdatingCurrent.startOfDay(for: day).timeIntervalSince1970)
@@ -670,11 +580,14 @@ struct MiniPanelView: View {
         case .cancelled: return "Cancelled tasks will appear here."
         }
     }
-    private func toggleDictation() {
-        if dictating { dictate.stop(); dictating = false; return }
-        dictating = true
-        dictate.start()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { if dictating { dictating = false } }
+    private var foldUpGesture: some Gesture {
+        DragGesture(minimumDistance: 28)
+            .onEnded { value in
+                guard !controller.pinned, !controller.editing, !inputFocused else { return }
+                if value.translation.height < -44 && abs(value.translation.width) < 72 {
+                    controller.collapse(animated: true)
+                }
+            }
     }
     private func submit() {
         if newCategory {
@@ -715,7 +628,7 @@ private struct NoteRow: View {
             }.accessibilityLabel((item.done ? "Reopen " : item.isChecked ? "Uncheck " : "Check off ") + item.title)
                 .accessibilityValue(item.done ? "Completed" : item.isChecked ? "Checked, awaiting Mark complete" : "Not checked")
             if editing {
-                TextField("Task", text: $value, axis: .vertical).textFieldStyle(.plain).font(controller.typeface.taskFont).focused($focused)
+                TextField("Task", text: $value, axis: .vertical).textFieldStyle(.plain).font(controller.taskFont()).focused($focused)
                     .onSubmit { finishEdit() }.onChange(of: focused) { if !$0 { finishEdit() } }
                     .onExitCommand { editing = false; controller.editing = false }
             } else {
@@ -766,7 +679,7 @@ private struct NoteRow: View {
         }
     }
     private var taskText: some View {
-        Text(item.title).font(controller.typeface.taskFont).lineSpacing(3)
+        Text(item.title).font(controller.taskFont()).lineSpacing(3)
             .foregroundStyle((item.textColor.map { Color(noteHex: $0) } ?? controller.ink).opacity(checked ? 0.46 : 0.95))
             .padding(.horizontal, item.highlight == nil ? 0 : 4).padding(.vertical, item.highlight == nil ? 0 : 2)
             .background(item.highlight.map { Color(noteHex: $0).opacity(controller.theme == .dark ? 0.3 : 0.4) } ?? .clear, in: RoundedRectangle(cornerRadius: 4))
@@ -845,7 +758,7 @@ private struct NoteTrashView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(workspace.trash) { entry in
                             VStack(alignment: .leading, spacing: 6) {
-                                Text(entry.item.title).font(controller.typeface.taskFont).lineLimit(3)
+                                Text(entry.item.title).font(controller.taskFont()).lineLimit(3)
                                 HStack(spacing: 6) {
                                     Text(entry.categoryName).font(controller.font(size: 10)).foregroundStyle(.secondary)
                                     Text("·").foregroundStyle(.secondary)
@@ -929,5 +842,4 @@ extension Notification.Name {
     static let captureNoteTask = Notification.Name("mini.captureNoteTask")
     static let showNoteAccount = Notification.Name("mini.showNoteAccount")
     static let addNoteCategory = Notification.Name("mini.addNoteCategory")
-    static let showNoteAssistant = Notification.Name("mini.showNoteAssistant")
 }

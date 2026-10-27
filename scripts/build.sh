@@ -18,9 +18,9 @@ cat > "$MINI_APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleExecutable</key><string>CampusRhythmMini</string>
 <key>CFBundleIdentifier</key><string>com.campusrhythm.mini</string>
 <key>CFBundleName</key><string>Campus Rhythm Mini</string>
-<key>CFBundleDisplayName</key><string>Rhythm Note</string>
-<key>CFBundleVersion</key><string>49</string>
-<key>CFBundleShortVersionString</key><string>0.9.38</string>
+<key>CFBundleDisplayName</key><string>Campus Rhythm To-Do Notes</string>
+<key>CFBundleVersion</key><string>59</string>
+<key>CFBundleShortVersionString</key><string>0.9.47</string>
 <key>UTExportedTypeDeclarations</key><array><dict>
 <key>UTTypeIdentifier</key><string>com.campusrhythm.note-order</string>
 <key>UTTypeDescription</key><string>Rhythm Note internal order</string>
@@ -33,8 +33,6 @@ cat > "$MINI_APP/Contents/Info.plist" <<'PLIST'
 <key>LSUIElement</key><false/>
 <key>NSCalendarsFullAccessUsageDescription</key><string>Rhythm Note displays your Apple Calendar events and saves events you create to your chosen calendar. These events are not uploaded to Campus Rhythm.</string>
 <key>NSCalendarsUsageDescription</key><string>Rhythm Note reads your calendars and creates events when you choose Save event.</string>
-<key>NSMicrophoneUsageDescription</key><string>Rhythm listens only while you hold the microphone, so you can choose a suggestion by voice. Audio is not saved.</string>
-<key>NSSpeechRecognitionUsageDescription</key><string>Rhythm turns a short phrase into a choice on this note. The recording is not stored.</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST

@@ -68,6 +68,95 @@ enum NoteDesign {
     static let inks: [(String, String)] = [("Graphite", "#25282D"), ("White", "#FFFFFF"), ("Blue", "#4E91E5"), ("Purple", "#A17BE8"), ("Rose", "#E57596"), ("Green", "#42A98D")]
 }
 
+/// Maps the appearance slider (left = see-through, right = solid paper).
+enum NotePaperOpacity {
+    static let sliderMin = 0.15
+    static let solidThreshold = 0.78
+
+    static func backdrop(finish: NoteGlassFinish, slider: Double) -> CGFloat {
+        let t = CGFloat(min(1, max(sliderMin, slider)))
+        if t >= CGFloat(solidThreshold) { return 1 }
+        let floor: CGFloat = finish == .glass ? 0.04 : 0.1
+        let span = CGFloat(solidThreshold - sliderMin)
+        return floor + (t - CGFloat(sliderMin)) / span * (1 - floor)
+    }
+
+    static func isSolid(slider: Double) -> Bool { slider >= solidThreshold }
+}
+
+struct NoteDeskSkin: Identifiable {
+    let id: String
+    let title: String
+    let theme: NoteTheme
+    let paper: String
+    let ink: String
+    let finish: NoteGlassFinish
+    /// Apple-inspired paper + ink pairs (Midnight / Starlight first, then popular hues).
+    static let presets: [NoteDeskSkin] = [
+        NoteDeskSkin(id: "midnight", title: "Midnight", theme: .dark, paper: "#0C0D10", ink: "#F5F5F7", finish: .glass),
+        NoteDeskSkin(id: "starlight", title: "Starlight", theme: .light, paper: "#FAFAFC", ink: "#1D1D1F", finish: .glass),
+        NoteDeskSkin(id: "space-gray", title: "Space Gray", theme: .dark, paper: "#3A3A3C", ink: "#F2F2F7", finish: .frosted),
+        NoteDeskSkin(id: "silver", title: "Silver", theme: .light, paper: "#E8E8ED", ink: "#2C2C2E", finish: .frosted),
+        NoteDeskSkin(id: "ultramarine", title: "Ultramarine", theme: .dark, paper: "#1A2847", ink: "#FFFFFF", finish: .glass),
+        NoteDeskSkin(id: "sky-blue", title: "Sky Blue", theme: .light, paper: "#EEF4FF", ink: "#184A9A", finish: .glass),
+        NoteDeskSkin(id: "pacific-blue", title: "Pacific Blue", theme: .dark, paper: "#1F3A52", ink: "#D6E9F5", finish: .frosted),
+        NoteDeskSkin(id: "alpine-green", title: "Alpine Green", theme: .dark, paper: "#1E2E28", ink: "#D8E8DF", finish: .glass),
+        NoteDeskSkin(id: "sage", title: "Sage", theme: .light, paper: "#E4EDE6", ink: "#1F4D3A", finish: .glass),
+        NoteDeskSkin(id: "product-red", title: "(PRODUCT) RED", theme: .dark, paper: "#5C1418", ink: "#FFF5F5", finish: .glass),
+        NoteDeskSkin(id: "rose", title: "Rose", theme: .light, paper: "#FCE8EC", ink: "#8B2942", finish: .frosted),
+        NoteDeskSkin(id: "lavender", title: "Lavender", theme: .light, paper: "#EDE7F6", ink: "#4A3D6B", finish: .frosted),
+        NoteDeskSkin(id: "deep-purple", title: "Deep Purple", theme: .dark, paper: "#2A1F3D", ink: "#E8DDF8", finish: .glass),
+        NoteDeskSkin(id: "graphite", title: "Graphite", theme: .dark, paper: "#1C1C1E", ink: "#AEAEB2", finish: .frosted),
+    ]
+}
+
+/// Fixed-size specular rim for the folded circle — no hover scale; follows light/dark theme.
+struct NoteLiquidGlassOrb: View {
+    var theme: NoteTheme
+    var body: some View {
+        GeometryReader { proxy in
+            let d = min(proxy.size.width, proxy.size.height)
+            let dark = theme == .dark
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: dark
+                                ? [Color.white.opacity(0.2), Color(white: 0.12).opacity(0.85), Color.black.opacity(0.72)]
+                                : [Color.white.opacity(0.55), Color.white.opacity(0.22), Color.white.opacity(0.05)],
+                            center: UnitPoint(x: 0.38, y: 0.22),
+                            startRadius: 0,
+                            endRadius: d * 0.62
+                        )
+                    )
+                Circle()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: dark
+                                ? [Color.white.opacity(0.55), Color.white.opacity(0.12), Color.black.opacity(0.35), Color.white.opacity(0.22)]
+                                : [Color.white.opacity(0.95), Color.white.opacity(0.35), Color.white.opacity(0.08), Color.white.opacity(0.42)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
+                Ellipse()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white.opacity(dark ? 0.35 : 0.72), Color.white.opacity(0)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: d * 0.52, height: d * 0.2)
+                    .offset(y: -d * 0.2)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 struct NoteLiquidSegmentBar: View {
     let tabs: [NoteTab]
     @Binding var selection: NoteTab
@@ -150,6 +239,8 @@ final class NoteSurfaceView: NSView {
     private let rim = NSView()
     private var effect: NSView?
     private let circle: Bool
+    private var glassFinish: NoteGlassFinish = .glass
+    private var panelOpacity: Double = 0.65
     override var isOpaque: Bool { circle ? false : super.isOpaque }
     init(circle: Bool) {
         self.circle = circle; super.init(frame: .zero)
@@ -174,9 +265,10 @@ final class NoteSurfaceView: NSView {
             glass.cornerRadius = side / 2
             glass.style = .clear
         } else if let material = effect as? NSVisualEffectView {
-            material.material = .hudWindow
+            material.material = .popover
             material.maskImage = Self.circleImage(side)
             material.state = .active
+            material.isEmphasized = true
         }
     }
     private static func circleImage(_ side: CGFloat) -> NSImage {
@@ -188,6 +280,8 @@ final class NoteSurfaceView: NSView {
         return image
     }
     func configure(theme: NoteTheme, edge: NoteEdgeStyle, paper: NSColor, opacity: Double, finish: NoteGlassFinish) {
+        glassFinish = finish
+        panelOpacity = opacity
         appearance = theme.appearance
         let corner: CGFloat = circle ? min(bounds.width, bounds.height) / 2 : edge.corner
         content.layer?.cornerRadius = corner
@@ -202,7 +296,7 @@ final class NoteSurfaceView: NSView {
             content.addSubview(tint, positioned: .below, relativeTo: content.subviews.first)
             tint.frame = content.bounds
             tint.autoresizingMask = [.width, .height]
-            tint.layer?.backgroundColor = (theme == .dark ? NSColor.black : NSColor.white).cgColor
+            tint.layer?.backgroundColor = Self.tintColor(paper: paper, theme: theme, opacity: opacity, finish: finish).cgColor
         }
         if #available(macOS 26.0, *) {
             if effect == nil || effect is NoteVisualEffectView {
@@ -214,13 +308,18 @@ final class NoteSurfaceView: NSView {
                 addSubview(effect!, positioned: .below, relativeTo: rim)
             }
             if let glass = effect as? NSGlassEffectView {
-                glass.style = (circle || finish == .glass) ? .clear : .regular
+                let solid = !circle && NotePaperOpacity.isSolid(slider: opacity)
+                if solid {
+                    glass.style = .regular
+                } else {
+                    glass.style = (circle || finish == .glass) ? .clear : .regular
+                }
                 glass.cornerRadius = max(corner, circle ? min(bounds.width, bounds.height) / 2 : corner)
             }
         } else if effect == nil {
             content.removeFromSuperview()
             let material = NoteVisualEffectView(frame: bounds)
-            material.material = circle ? .hudWindow : Self.material(theme: theme, finish: finish)
+            material.material = circle ? .popover : Self.material(theme: theme, finish: finish)
             material.applyActiveGlass(); material.wantsLayer = true
             material.layer?.cornerRadius = corner; material.layer?.masksToBounds = true
             content.frame = material.bounds; content.autoresizingMask = [.width, .height]
@@ -230,15 +329,30 @@ final class NoteSurfaceView: NSView {
         }
         effect?.layer?.cornerRadius = corner
         (effect as? NoteVisualEffectView)?.applyActiveGlass()
+        if let material = effect as? NoteVisualEffectView, !circle {
+            material.material = Self.material(theme: theme, finish: finish)
+        }
         shadow = nil
         needsLayout = true
+    }
+    private static func tintColor(paper: NSColor, theme: NoteTheme, opacity: Double, finish: NoteGlassFinish) -> NSColor {
+        let base = (paper.alphaComponent > 0.01 ? paper : (theme == .dark ? NSColor(white: 0.08, alpha: 1) : NSColor(white: 0.98, alpha: 1))).usingColorSpace(.deviceRGB) ?? paper
+        return base.withAlphaComponent(NotePaperOpacity.backdrop(finish: finish, slider: opacity))
     }
     private static func material(theme: NoteTheme, finish: NoteGlassFinish) -> NSVisualEffectView.Material {
         if theme == .dark { return finish == .glass ? .hudWindow : .underWindowBackground }
         return finish == .glass ? .popover : .sheet
     }
     func refreshMaterial() {
-        if #available(macOS 26.0, *), let glass = effect as? NSGlassEffectView { glass.style = .clear }
+        if #available(macOS 26.0, *), let glass = effect as? NSGlassEffectView {
+            if circle {
+                glass.style = .clear
+            } else if NotePaperOpacity.isSolid(slider: panelOpacity) {
+                glass.style = .regular
+            } else {
+                glass.style = glassFinish == .glass ? .clear : .regular
+            }
+        }
         (effect as? NoteVisualEffectView)?.applyActiveGlass()
     }
 }

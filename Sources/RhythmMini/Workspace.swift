@@ -104,7 +104,10 @@ enum NoteTab: String, CaseIterable, Identifiable {
     var canUndo: Bool { repository.canUndo }
     var categories: [NoteCategory] { document.categories }
     var selectedName: String { categories.first { $0.id == selectedCategory }?.name ?? "work" }
-    var openCount: Int { categories.reduce(0) { $0 + document.items(in: $1, status: .todo, day: selectedDay).count } }
+    var openCount: Int { openTodoCount(on: selectedDay) }
+    func openTodoCount(on day: String) -> Int {
+        categories.reduce(0) { $0 + document.items(in: $1, status: .todo, day: day).count }
+    }
     var preferredHeight: CGFloat { min(600, max(380, 175 + CGFloat(categories.count) * 33 + CGFloat(filteredCount) * 33)) }
     var events: [NoteCalendarEvent] {
         guard let noon = NoteDay.date(selectedDay) else { return [] }

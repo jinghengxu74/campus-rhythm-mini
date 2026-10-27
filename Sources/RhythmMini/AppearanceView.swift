@@ -1,78 +1,177 @@
 import AppKit
 import SwiftUI
 
+private struct NoteColorChip: View {
+    let hex: String
+    var selected: Bool = false
+    var body: some View {
+        RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .fill(Color(noteHex: hex))
+            .frame(width: 20, height: 14)
+            .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(selected ? Color.primary.opacity(0.85) : Color.primary.opacity(0.18), lineWidth: selected ? 1.5 : 0.5))
+    }
+}
+
 struct NoteAppearanceView: View {
     @ObservedObject var controller: AppController
     var close: () -> Void
+    private let paperPresets = ["#FAFAFC", "#0C0D10", "#EEF4FF", "#1A2847", "#E8E8ED", "#EDE7F6"]
+    private let inkPresets = ["#25282D", "#FFFFFF", "#4E91E5", "#A17BE8", "#42A98D"]
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack { Text("Appearance").font(controller.font(size: 14, weight: .semibold)); Spacer(); Button(action: close) { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Close appearance") }
-                HStack(spacing: 12) {
-                    Button { controller.adjustText(-0.1) } label: { Text("A").font(.system(size: 12)).frame(width: 32, height: 30) }.disabled(controller.textScale <= 0.85).accessibilityLabel("Decrease note text size")
-                    Text("Text size · \(Int((controller.textScale * 100).rounded()))%").frame(maxWidth: .infinity)
-                    Button { controller.adjustText(0.1) } label: { Text("A").font(.system(size: 20)).frame(width: 32, height: 30) }.disabled(controller.textScale >= 1.5).accessibilityLabel("Increase note text size")
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Appearance").font(controller.font(size: 14, weight: .semibold))
+                    Spacer()
+                    Button(action: close) { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Close appearance")
                 }
-                Button("Reset text size") { controller.textScale = 1 }.font(.caption)
+                HStack(spacing: 10) {
+                    Button { controller.adjustText(-0.05) } label: { Text("A").font(.system(size: 11)).frame(width: 28, height: 26) }
+                        .disabled(controller.textScale <= 0.7).accessibilityLabel("Decrease task text size")
+                    Text("Task text · \(Int((controller.textScale * 100).rounded()))%").font(controller.font(size: 10)).frame(maxWidth: .infinity)
+                    Button { controller.adjustText(0.05) } label: { Text("A").font(.system(size: 17)).frame(width: 28, height: 26) }
+                        .disabled(controller.textScale >= 1.5).accessibilityLabel("Increase task text size")
+                }
+                Button("Reset text size") { controller.textScale = 1 }.font(controller.font(size: 9)).foregroundStyle(.secondary)
+
+                Text("Desk skins").font(controller.font(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(NoteDeskSkin.presets) { skin in
+                            Button {
+                                controller.theme = skin.theme
+                                controller.paperHex = skin.paper
+                                controller.inkHex = skin.ink
+                                controller.glassFinish = skin.finish
+                            } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .fill(Color(noteHex: skin.paper))
+                                        .overlay(Text("Aa").font(controller.font(size: 9)).foregroundStyle(Color(noteHex: skin.ink)).padding(.leading, 5), alignment: .leading)
+                                        .frame(width: 72, height: 22)
+                                    Text(skin.title).font(controller.font(size: 8)).lineLimit(1)
+                                }
+                                .padding(5)
+                                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 7))
+                            }
+                            .accessibilityLabel(skin.title + " desk skin")
+                        }
+                    }
+                }
+
                 Text("Mode").font(controller.font(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     ForEach(NoteTheme.allCases) { theme in
                         Button { controller.theme = theme; controller.resetColors() } label: {
-                            VStack(spacing: 7) {
-                                RoundedRectangle(cornerRadius: 10).fill(theme == .dark ? Color(white: 0.09) : .white)
-                                    .overlay(Text("Aa").font(controller.font(size: 15)).foregroundStyle(theme == .dark ? .white : .black)).frame(height: 48)
-                                Text(theme.title).font(controller.font(size: 11))
-                            }.padding(6).frame(maxWidth: .infinity)
-                                .background(controller.theme == theme ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 12))
-                                .contentShape(Rectangle())
-                        }.accessibilityLabel(theme.title + " mode").accessibilityAddTraits(controller.theme == theme ? .isSelected : [])
+                            Text(theme.title).font(controller.font(size: 10))
+                                .frame(maxWidth: .infinity).padding(.vertical, 8)
+                                .background(controller.theme == theme ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        .accessibilityAddTraits(controller.theme == theme ? .isSelected : [])
                     }
                 }
+
                 Text("Edges").font(controller.font(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     ForEach(NoteEdgeStyle.allCases) { edge in
                         Button { controller.edgeStyle = edge } label: {
-                            VStack(spacing: 6) {
-                                RoundedRectangle(cornerRadius: edge.corner * 0.55).strokeBorder(controller.ink.opacity(controller.edgeStyle == edge ? 0.8 : 0.25), lineWidth: 1).frame(width: 48, height: 32)
-                                Text(edge.title).font(controller.font(size: 8)).lineLimit(1).minimumScaleFactor(0.8)
-                            }.padding(.vertical, 8).frame(maxWidth: .infinity).background(controller.edgeStyle == edge ? Color.primary.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 10))
-                                .contentShape(Rectangle())
-                        }.accessibilityLabel(edge.title + " edges").accessibilityAddTraits(controller.edgeStyle == edge ? .isSelected : [])
+                            Text(edge.title.components(separatedBy: " ").first ?? edge.title)
+                                .font(controller.font(size: 8)).lineLimit(1).minimumScaleFactor(0.7)
+                                .frame(maxWidth: .infinity).padding(.vertical, 6)
+                                .background(controller.edgeStyle == edge ? Color.primary.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        .accessibilityLabel(edge.title)
+                        .accessibilityAddTraits(controller.edgeStyle == edge ? .isSelected : [])
                     }
                 }
-                HStack(spacing: 4) {
+
+                Text("Window material").font(controller.font(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                HStack(spacing: 6) {
                     ForEach(NoteGlassFinish.allCases) { finish in
                         Button { controller.glassFinish = finish } label: {
-                            Text(finish.title).font(controller.font(size: 11)).frame(maxWidth: .infinity).padding(.vertical, 6)
-                                .background(controller.glassFinish == finish ? Color.primary.opacity(0.09) : .clear, in: Capsule())
-                        }.accessibilityAddTraits(controller.glassFinish == finish ? .isSelected : [])
-                    }
-                }.padding(3).background(.primary.opacity(0.035), in: Capsule())
-                HStack { Text("Paper opacity"); Spacer(); Text("\(Int((controller.backgroundOpacity * 100).rounded()))%") }.font(controller.font(size: 11))
-                Slider(value: $controller.backgroundOpacity, in: 0.15...1).accessibilityLabel("Paper opacity")
-                HStack { Text("More glass"); Spacer(); Text("More solid") }.font(controller.font(size: 9)).foregroundStyle(.secondary)
-                Divider()
-                ColorPicker("Paper color", selection: Binding(get: { Color(nsColor: controller.paper) }, set: { controller.paperHex = $0.noteHex }), supportsOpacity: false).font(controller.font(size: 11))
-                HStack(spacing: 8) {
-                    ForEach(["#F7F5F0", "#111318", "#EDE7F6", "#E4F0E8", "#F7E8DF"], id: \.self) { color in
-                        Button { controller.paperHex = color } label: { Circle().fill(Color(noteHex: color)).overlay(Circle().strokeBorder(.gray.opacity(0.3))).frame(width: 27, height: 27) }.accessibilityLabel("Paper " + color)
-                    }
-                }
-                Divider()
-                ColorPicker("Text color", selection: Binding(get: { controller.ink }, set: { controller.inkHex = $0.noteHex }), supportsOpacity: false).font(controller.font(size: 11))
-                HStack(spacing: 8) {
-                    ForEach(NoteDesign.inks, id: \.1) { name, color in
-                        Button { controller.inkHex = color } label: {
-                            Circle().fill(Color(noteHex: color)).overlay(Circle().strokeBorder(.gray.opacity(0.4))).frame(width: 27, height: 27)
-                        }.help(name + " text").accessibilityLabel("Text " + name)
+                            HStack(spacing: 6) {
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(.ultraThinMaterial)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .strokeBorder(.white.opacity(finish == .glass ? 0.55 : 0.2), lineWidth: 0.5)
+                                    )
+                                    .frame(width: 28, height: 20)
+                                    .opacity(finish == .glass ? 0.55 : 1)
+                                Text(finish.title).font(controller.font(size: 10))
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 5)
+                            .background(controller.glassFinish == finish ? Color.primary.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        .accessibilityAddTraits(controller.glassFinish == finish ? .isSelected : [])
                     }
                 }
-                Button("Reset colors for this mode") { controller.resetColors() }.font(controller.font(size: 10)).foregroundStyle(.secondary)
-                Text("Right-click a task to change its text color or add a highlight.").font(controller.font(size: 10)).foregroundStyle(.secondary)
-            }.padding(18)
-        }.frame(width: 300, height: 540).buttonStyle(.plain).foregroundStyle(.primary).environment(\.colorScheme, controller.theme.scheme)
+                Text(finishHint(controller.glassFinish)).font(controller.font(size: 9)).foregroundStyle(.tertiary)
+
+                HStack {
+                    Text("Opacity").font(controller.font(size: 10))
+                    Spacer()
+                    Text(NotePaperOpacity.isSolid(slider: controller.backgroundOpacity) ? "Solid" : "\(Int((controller.backgroundOpacity * 100).rounded()))%")
+                        .font(controller.font(size: 10))
+                }
+                Slider(value: $controller.backgroundOpacity, in: NotePaperOpacity.sliderMin...1).accessibilityLabel("Window opacity")
+                HStack {
+                    Text("See-through").font(controller.font(size: 9)).foregroundStyle(.tertiary)
+                    Spacer()
+                    Text("Solid paper").font(controller.font(size: 9)).foregroundStyle(.tertiary)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    ColorPicker("Paper", selection: Binding(get: { Color(nsColor: controller.paper) }, set: { controller.paperHex = $0.noteHex }), supportsOpacity: false)
+                        .font(controller.font(size: 10))
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 5) {
+                            ForEach(paperPresets, id: \.self) { color in
+                                Button { controller.paperHex = color } label: {
+                                    NoteColorChip(hex: color, selected: controller.paperHex == color)
+                                }.accessibilityLabel("Paper " + color)
+                            }
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    ColorPicker("Text", selection: Binding(get: { controller.ink }, set: { controller.inkHex = $0.noteHex }), supportsOpacity: false)
+                        .font(controller.font(size: 10))
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 5) {
+                            ForEach(inkPresets, id: \.self) { color in
+                                Button { controller.inkHex = color } label: {
+                                    NoteColorChip(hex: color, selected: controller.inkHex == color)
+                                }.accessibilityLabel("Text " + color)
+                            }
+                        }
+                    }
+                }
+
+                Button("Reset colors for this mode") { controller.resetColors() }.font(controller.font(size: 9)).foregroundStyle(.secondary)
+                Text("Right-click a task for its own text color or highlight.").font(controller.font(size: 9)).foregroundStyle(.secondary)
+            }
+            .padding(14)
+        }
+        .frame(width: 280, height: 460)
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+        }
+        .environment(\.colorScheme, controller.theme.scheme)
+    }
+
+    private func finishHint(_ finish: NoteGlassFinish) -> String {
+        finish == .glass
+            ? "Glass · Apple Liquid Glass (clear, more see-through)."
+            : "Frosted · denser blur and stronger paper tint."
     }
 }
+
 struct NoteAccountView: View {
     @ObservedObject var account = AccountConnection.shared
     @ObservedObject var controller: AppController

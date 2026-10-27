@@ -12,8 +12,13 @@ final class FloatingPanel: NSPanel {
     @Published var textScale = UserDefaults.standard.object(forKey: "noteTextScale") as? Double ?? 1 {
         didSet { UserDefaults.standard.set(textScale, forKey: "noteTextScale") }
     }
-    func font(size: CGFloat, weight: Font.Weight = .regular) -> Font { typeface.font(size: size * min(1.5, max(0.85, textScale)), weight: weight) }
-    func adjustText(_ delta: Double) { textScale = min(1.5, max(0.85, (textScale + delta) * 100 / 100)) }
+    func font(size: CGFloat, weight: Font.Weight = .regular) -> Font { typeface.font(size: size * min(1.5, max(0.7, textScale)), weight: weight) }
+    func taskFont(weight: Font.Weight = .regular) -> Font { font(size: 11, weight: weight) }
+    var backdropOpacity: Double { Double(NotePaperOpacity.backdrop(finish: glassFinish, slider: backgroundOpacity)) }
+    func adjustText(_ delta: Double) {
+        let next = min(1.5, max(0.7, textScale + delta))
+        textScale = (next * 20).rounded() / 20
+    }
     @Published var typeface = NoteTypeface(rawValue: UserDefaults.standard.string(forKey: "notePaperTypeface") ?? "monospaced") ?? .monospaced {
         didSet { UserDefaults.standard.set(typeface.rawValue, forKey: "notePaperTypeface"); saveAppearance() }
     }
@@ -21,7 +26,11 @@ final class FloatingPanel: NSPanel {
         didSet { UserDefaults.standard.set(backgroundOpacity, forKey: "noteGlassPaperOpacityV1"); applyAppearance() }
     }
     @Published var glassFinish = NoteGlassFinish(rawValue: UserDefaults.standard.string(forKey: "noteGlassFinishV1") ?? "glass") ?? .glass {
-        didSet { UserDefaults.standard.set(glassFinish.rawValue, forKey: "noteGlassFinishV1"); applyAppearance() }
+        didSet {
+            UserDefaults.standard.set(glassFinish.rawValue, forKey: "noteGlassFinishV1")
+            applyAppearance()
+            refreshGlassMaterial()
+        }
     }
     @Published var theme = NoteTheme(rawValue: UserDefaults.standard.string(forKey: "noteThemeV1") ?? "light") ?? .light {
         didSet { UserDefaults.standard.set(theme.rawValue, forKey: "noteThemeV1"); applyAppearance() }
@@ -52,6 +61,8 @@ final class FloatingPanel: NSPanel {
     private var menuObserver: NSObjectProtocol?
     private var dateTimer: Timer?
     private var observedToday = NoteDay.key()
+    private var autoFoldWorkItem: DispatchWorkItem?
+    private var collapsing = false
     private var frameName: String { "RhythmNoteWindowV3-" + (workspace?.selectedDay ?? "today") }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -59,10 +70,27 @@ final class FloatingPanel: NSPanel {
         let today = NoteDay.key()
         let previousToday = UserDefaults.standard.string(forKey: "noteObservedTodayV1") ?? today
         let days = Array(Set((UserDefaults.standard.stringArray(forKey: "noteOpenDaysV1") ?? []).filter(NoteDay.isValid).map { NoteDay.rollover($0, from: previousToday, to: today) })).sorted()
+        let crossedMidnight = previousToday != today
         UserDefaults.standard.set(today, forKey: "noteObservedTodayV1")
         setupWindow(day: days.first ?? NoteDay.key(), primary: true)
+        observedToday = today
+        if crossedMidnight {
+            let carried = workspace.openTodoCount(on: previousToday)
+            // #region agent log
+            AgentDebugLog.emit(hypothesisId: "E", location: "App:launch", message: "day rollover on launch", data: [
+                "previousToday": previousToday,
+                "today": today,
+                "carried": String(carried),
+            ])
+            // #endregion
+            if carried > 0 {
+                Task { await NoteNotifications.notifyCarriedTodos(from: previousToday, count: carried) }
+            }
+        }
         for day in days.dropFirst() { newWindow(day: day) }
         account.resume()
+        NoteNotifications.configure()
+        NoteNotificationRouter.shared.openDay = { [weak self] day in self?.openDayForReview(day) }
     }
     private func setupWindow(day: String, primary: Bool) {
         workspace = Workspace(day: day)
@@ -83,9 +111,10 @@ final class FloatingPanel: NSPanel {
         panel.delegate = self
         fitOnScreen()
 
-        bubble = NSPanel(contentRect: NSRect(x: screen.maxX - 62, y: screen.maxY - 58, width: 44, height: 44), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        bubble.title = "Rhythm Note circle"; bubble.isReleasedWhenClosed = false; bubble.backgroundColor = .clear; bubble.isOpaque = false
-        bubble.hasShadow = false; bubble.level = .floating; bubble.hidesOnDeactivate = false
+        let circleSide: CGFloat = 44
+        bubble = NSPanel(contentRect: NSRect(x: screen.maxX - circleSide - 14, y: screen.maxY - circleSide - 10, width: circleSide, height: circleSide), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        bubble.title = "Campus Rhythm To-Do Notes"; bubble.isReleasedWhenClosed = false; bubble.backgroundColor = .clear; bubble.isOpaque = false
+        bubble.hasShadow = true; bubble.level = .floating; bubble.hidesOnDeactivate = false
         bubble.isMovableByWindowBackground = true
         bubble.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         bubble.contentView = makeNoteSurface(NoteCircle(workspace: workspace, controller: self), circle: true)
@@ -100,7 +129,7 @@ final class FloatingPanel: NSPanel {
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
             button.image = NSImage(systemSymbolName: "checklist", accessibilityDescription: "Rhythm Note")
-            button.toolTip = "Rhythm Note · click to open or minimize · right-click for options"
+            button.toolTip = "Campus Rhythm To-Do Notes · click to open or minimize · right-click for options"
             button.target = self; button.action = #selector(statusClicked); button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         }
@@ -121,9 +150,14 @@ final class FloatingPanel: NSPanel {
                 guard let self else { return }
                 let today = NoteDay.key()
                 if today != self.observedToday && !self.editing {
-                    self.workspace.selectedDay = NoteDay.rollover(self.workspace.selectedDay, from: self.observedToday, to: today)
+                    let yesterday = self.observedToday
+                    let carried = self.workspace.openTodoCount(on: yesterday)
+                    self.workspace.selectedDay = NoteDay.rollover(self.workspace.selectedDay, from: yesterday, to: today)
                     self.observedToday = today
                     UserDefaults.standard.set(today, forKey: "noteObservedTodayV1")
+                    if carried > 0 {
+                        Task { await NoteNotifications.notifyCarriedTodos(from: yesterday, count: carried) }
+                    }
                 }
                 self.objectWillChange.send()
             }
@@ -191,25 +225,28 @@ final class FloatingPanel: NSPanel {
     private func remember(_ mode: String) { if root == nil { UserDefaults.standard.set(mode, forKey: "notePresentation") }; saveOpenDays() }
     func expand(activate: Bool = true) {
         enabled = true
+        cancelAutoFold()
         let fromCircle = bubble.isVisible
+        let bubbleFrame = bubble.frame
+        bubble.orderOut(nil)
+        reveal()
         if fromCircle {
-            var frame = panel.frame
-            frame.origin = NSPoint(x: bubble.frame.maxX - frame.width, y: bubble.frame.maxY - frame.height)
-            panel.setFrame(frame, display: false)
-            panel.alphaValue = 0.02
-            panel.setFrame(frame.insetBy(dx: 6, dy: 6), display: false)
-        }
-        bubble.orderOut(nil); reveal()
-        fitOnScreen()
-        if fromCircle {
-            let target = panel.frame
-            panel.setFrame(target.insetBy(dx: 8, dy: 8), display: false)
+            let anchor = topRightAnchor(of: bubbleFrame)
+            var target = panel.frame
+            target = frame(anchoredTopRight: anchor, size: target.size)
+            target = clampedFrame(target)
+            let side = min(bubbleFrame.width, bubbleFrame.height)
+            let small = frame(anchoredTopRight: anchor, size: NSSize(width: side, height: side))
+            panel.setFrame(small, display: false)
+            panel.alphaValue = 1
+            panel.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.34
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                ctx.duration = 0.18
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
                 panel.animator().setFrame(target, display: true)
-                panel.animator().alphaValue = 1
             }
+        } else {
+            fitOnScreen()
         }
         if activate { NSApp.activate(ignoringOtherApps: true); panel.makeKeyAndOrderFront(nil) }
         else { panel.orderFrontRegardless() }
@@ -220,20 +257,80 @@ final class FloatingPanel: NSPanel {
         editing = false
         panel.orderOut(nil); bubble.orderOut(nil); remember("menu")
     }
-    func collapse() {
+    func collapse(animated: Bool = false) {
+        guard !collapsing else { return }
         workspace.cancelDrag()
-        editing = false; panel.orderOut(nil); placeBubble()
-        if enabled { bubble.orderFrontRegardless() }; remember("circle")
+        editing = false
+        cancelAutoFold()
+        guard panel.isVisible else { return }
+        let start = panel.frame
+        let side = bubble.frame.width > 1 ? bubble.frame.width : 44
+        let anchor = topRightAnchor(of: start)
+        let target = frame(anchoredTopRight: anchor, size: NSSize(width: side, height: side))
+        if !animated {
+            panel.orderOut(nil)
+            bubble.setFrame(target, display: false)
+            finishCircleMove()
+            if enabled { bubble.orderFrontRegardless() }
+            remember("circle")
+            return
+        }
+        collapsing = true
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.18
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.55, 0, 0.75, 0.35)
+            panel.animator().setFrame(target, display: true)
+        } completionHandler: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.panel.orderOut(nil)
+                self.panel.alphaValue = 1
+                self.panel.setFrame(start, display: false)
+                self.bubble.setFrame(target, display: false)
+                self.finishCircleMove()
+                if self.enabled { self.bubble.orderFrontRegardless() }
+                self.remember("circle")
+                self.collapsing = false
+            }
+        }
+    }
+
+    func foldUnlessPinned() {
+        guard !pinned, panel.isVisible, !bubble.isVisible else { return }
+        collapse(animated: true)
+    }
+
+    func openDayForReview(_ day: String) {
+        let owner = root ?? self
+        if owner.workspace.selectedDay == day {
+            owner.expand(activate: true)
+            owner.workspace.tab = .todo
+            return
+        }
+        if let existing = ([owner] + owner.children).first(where: { $0.workspace?.selectedDay == day }) {
+            existing.expand(activate: true)
+            existing.workspace.tab = .todo
+            return
+        }
+        owner.newWindow(day: day)
+        owner.children.last?.workspace.tab = .todo
     }
     private func placeBubble() {
         guard let bubble else { return }
-        bubble.setFrameOrigin(NSPoint(x: panel.frame.maxX - 44, y: panel.frame.maxY - 44))
+        let side = bubble.frame.width > 1 ? bubble.frame.width : 44
+        let anchor = topRightAnchor(of: panel.frame)
+        bubble.setFrame(frame(anchoredTopRight: anchor, size: NSSize(width: side, height: side)), display: false)
         finishCircleMove()
+    }
+    private func topRightAnchor(of frame: NSRect) -> NSPoint { NSPoint(x: frame.maxX, y: frame.maxY) }
+    private func frame(anchoredTopRight anchor: NSPoint, size: NSSize) -> NSRect {
+        NSRect(x: anchor.x - size.width, y: anchor.y - size.height, width: size.width, height: size.height)
     }
     func togglePin() {
         pinned.toggle(); UserDefaults.standard.set(pinned, forKey: "notePinned")
         panel.level = pinned ? .floating : .normal
         saveAppearance(); reveal()
+        if pinned { cancelAutoFold() } else { scheduleAutoFold() }
     }
     private func reveal() {
         panel.ignoresMouseEvents = false; panel.alphaValue = 1
@@ -247,12 +344,17 @@ final class FloatingPanel: NSPanel {
     }
     private func fitOnScreen() {
         guard let visible = visibleScreen() else { return }
-        var frame = panel.frame
+        let frame = clampedFrame(panel.frame, visible: visible)
+        if frame != panel.frame { panel.setFrame(frame, display: true) }
+    }
+    private func clampedFrame(_ frame: NSRect, visible: NSRect? = nil) -> NSRect {
+        let visible = visible ?? visibleScreen() ?? frame
+        var frame = frame
         frame.size.width = min(max(frame.width, 300), visible.width - 16)
         frame.size.height = min(max(frame.height, 260), visible.height - 16)
         frame.origin.x = min(max(frame.minX, visible.minX + 8), visible.maxX - frame.width - 8)
         frame.origin.y = min(max(frame.minY, visible.minY + 8), visible.maxY - frame.height - 8)
-        if frame != panel.frame { panel.setFrame(frame, display: true) }
+        return frame
     }
     var currentFrame: NSRect { panel.frame }
     func resize(from start: NSRect, translation: CGSize, edges: NoteResizeEdges) {
@@ -267,10 +369,40 @@ final class FloatingPanel: NSPanel {
         panel.setFrame(NSRect(x: frame.minX, y: frame.maxY - workspace.preferredHeight, width: 360, height: workspace.preferredHeight), display: true)
         fitOnScreen(); panel.saveFrame(usingName: frameName)
     }
-    func windowDidBecomeKey(_ notification: Notification) { refreshGlassMaterial() }
+    func windowDidBecomeKey(_ notification: Notification) {
+        cancelAutoFold()
+        refreshGlassMaterial()
+    }
     func windowDidResignKey(_ notification: Notification) {
         refreshGlassMaterial()
         DispatchQueue.main.async { [weak self] in self?.refreshGlassMaterial() }
+        scheduleAutoFold()
+    }
+
+    private func cancelAutoFold() {
+        autoFoldWorkItem?.cancel()
+        autoFoldWorkItem = nil
+    }
+
+    private func scheduleAutoFold() {
+        cancelAutoFold()
+        let blocked = pinned || !panel.isVisible || bubble.isVisible || editing || collapsing
+        // #region agent log
+        AgentDebugLog.emit(hypothesisId: "C", location: "App:scheduleAutoFold", message: blocked ? "auto-fold skipped" : "auto-fold scheduled", data: [
+            "pinned": String(pinned),
+            "editing": String(editing),
+            "panelVisible": String(panel.isVisible),
+        ])
+        // #endregion
+        guard !pinned, panel.isVisible, !bubble.isVisible, !editing, !collapsing else { return }
+        let work = DispatchWorkItem { [weak self] in
+            // #region agent log
+            AgentDebugLog.emit(hypothesisId: "C", location: "App:autoFoldFire", message: "collapse animated")
+            // #endregion
+            self?.collapse(animated: true)
+        }
+        autoFoldWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: work)
     }
     func windowDidMove(_ notification: Notification) { panel.saveFrame(usingName: frameName) }
     func windowWillStartLiveResize(_ notification: Notification) { reveal() }
@@ -306,7 +438,6 @@ final class FloatingPanel: NSPanel {
         }
         add(menu, "Open notes", nil).submenu = notes
         add(menu, "Open next day in new window", #selector(nextWindow))
-        add(menu, "Rhythm…", #selector(forYou))
         add(menu, NoteNotifications.enabled ? "Turn off deadline reminders" : "Turn on deadline reminders", #selector(toggleReminders))
         add(menu, "Account…", #selector(accountClicked))
         add(menu, "Reset note size", #selector(reset))
@@ -347,7 +478,6 @@ final class FloatingPanel: NSPanel {
     @objc private func openExisting(_ sender: NSMenuItem) { (sender.representedObject as? AppController)?.expand() }
     @objc private func nextWindow() { newWindow(day: NoteDay.offset(workspace.selectedDay, by: 1)) }
     @objc private func accountClicked() { expand(); NotificationCenter.default.post(name: .showNoteAccount, object: self) }
-    @objc private func forYou() { expand(); NotificationCenter.default.post(name: .showNoteAssistant, object: self) }
     @objc private func toggleReminders() { Task { await account.setRemindersEnabled(!NoteNotifications.enabled) } }
     @objc private func typefaceClicked(_ sender: NSMenuItem) {
         guard NoteTypeface.allCases.indices.contains(sender.tag), NoteTypeface.allCases[sender.tag].available else { return }
@@ -374,32 +504,29 @@ struct NoteCircle: View {
     @ObservedObject var controller: AppController
     var body: some View {
         ZStack {
-            Circle().strokeBorder(
-                LinearGradient(colors: [Color.white.opacity(0.9), Color.white.opacity(0.08), Color.white.opacity(0.45)], startPoint: .top, endPoint: .bottom),
-                lineWidth: 1.1
-            )
-            Ellipse()
-                .fill(LinearGradient(colors: [Color.white.opacity(0.55), Color.white.opacity(0)], startPoint: .top, endPoint: .bottom))
-                .frame(width: 26, height: 12)
-                .offset(y: -12)
-                .allowsHitTesting(false)
+            NoteLiquidGlassOrb(theme: controller.theme)
             Text("\(workspace.openCount)")
-                .font(controller.font(size: 13, weight: .semibold))
-                .foregroundStyle(controller.ink.opacity(0.9))
+                .font(controller.font(size: 12, weight: .semibold))
+                .foregroundStyle(controller.theme == .dark ? Color.white.opacity(0.9) : Color(white: 0.1).opacity(0.88))
+                .shadow(color: controller.theme == .dark ? .black.opacity(0.35) : .white.opacity(0.4), radius: 0.5, y: controller.theme == .dark ? 0.5 : -0.5)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Circle())
         .overlay { CircleInteraction(controller: controller) }
-            .help(workspace.selectedDay + " · " + String(workspace.openCount) + " to do · Click to open")
-            .environment(\.colorScheme, controller.theme.scheme)
+        .help(workspace.selectedDay + " · " + String(workspace.openCount) + " to do · Click to open · Drag to move")
+        .environment(\.colorScheme, controller.theme.scheme)
     }
 }
 private struct CircleInteraction: NSViewRepresentable {
     let controller: AppController
     func makeNSView(context: Context) -> CircleInteractionView {
-        let view = CircleInteractionView(); view.controller = controller; return view
+        let view = CircleInteractionView()
+        view.controller = controller
+        return view
     }
-    func updateNSView(_ view: CircleInteractionView, context: Context) { view.controller = controller }
+    func updateNSView(_ view: CircleInteractionView, context: Context) {
+        view.controller = controller
+    }
 }
 private final class CircleInteractionView: NSView {
     weak var controller: AppController?

@@ -2,11 +2,34 @@ import Foundation
 import NoteCore
 import UserNotifications
 
+@MainActor final class NoteNotificationRouter: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = NoteNotificationRouter()
+    var openDay: ((String) -> Void)?
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier || response.actionIdentifier == "OPEN_YESTERDAY",
+              let day = response.notification.request.content.userInfo["day"] as? String else { return }
+        openDay?(day)
+    }
+}
+
 @MainActor enum NoteNotifications {
     private static let enabledKey = "noteRemindersEnabledV1"
+    private static let carryCategory = "CARRY_FORWARD"
     static var enabled: Bool {
         get { UserDefaults.standard.bool(forKey: enabledKey) }
         set { UserDefaults.standard.set(newValue, forKey: enabledKey) }
+    }
+
+    static func configure() {
+        UNUserNotificationCenter.current().delegate = NoteNotificationRouter.shared
+        let open = UNNotificationAction(identifier: "OPEN_YESTERDAY", title: "Review yesterday", options: [.foreground])
+        let category = UNNotificationCategory(identifier: carryCategory, actions: [open], intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([category])
     }
 
     static func requestAccessIfNeeded() async -> Bool {
@@ -19,6 +42,23 @@ import UserNotifications
             return (try? await center.requestAuthorization(options: [.alert, .sound])) == true
         @unknown default: return false
         }
+    }
+
+    static func notifyCarriedTodos(from yesterday: String, count: Int) async {
+        guard count > 0 else { return }
+        guard await requestAccessIfNeeded() else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Rhythm Note · carried forward"
+        let word = count == 1 ? "task" : "tasks"
+        content.body = "\(count) open \(word) from yesterday are on today’s list. Tap to review yesterday or mark them done."
+        content.sound = .default
+        content.categoryIdentifier = carryCategory
+        content.userInfo = ["day": yesterday]
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let id = "carry-\(yesterday)"
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id])
+        try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
     }
 
     static func reconcile(tasks: [PlanTaskBrief]) async {
