@@ -1,4 +1,5 @@
 import AppKit
+import EventKit
 import SwiftUI
 import NoteCore
 
@@ -7,6 +8,7 @@ struct MiniPanelView: View {
     @ObservedObject var controller: AppController
     @AppStorage("noteShowOnlineEvents") private var showOnlineEvents = true
     @AppStorage("noteShowAppleEvents") private var showAppleEvents = true
+    @AppStorage("noteShowApplePendingTodos") private var showApplePendingTodos = true
     @State private var input = ""
     @State private var newCategory = false
     @State private var showAppearance = false
@@ -38,6 +40,14 @@ struct MiniPanelView: View {
         VStack(spacing: 0) {
             header
             statusTabs
+            if workspace.tab == .pending {
+                Toggle("Show Apple to-dos", isOn: $showApplePendingTodos)
+                    .font(controller.font(size: 12))
+                    .help("Show or hide Apple Calendar to-dos in Pending. Hiding does not delete them.")
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 2)
+            }
             if workspace.tab != .events && workspace.statusFilter == .completed {
                 completedChartSection
             }
@@ -107,6 +117,9 @@ struct MiniPanelView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .showNoteAccount)) { notice in if notice.object == nil || notice.object as? AppController === controller { showAccount = true } }
+        .onAppear { refreshAppleDeadlines() }
+        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in refreshAppleDeadlines() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refreshAppleDeadlines() }
         .onChange(of: workspace.selectedDay) { _ in controller.dateChanged() }
         .onChange(of: inputFocused) { controller.editing = $0 }
         .onReceive(NotificationCenter.default.publisher(for: .captureNoteTask)) { _ in newCategory = false; inputFocused = true }
@@ -125,7 +138,7 @@ struct MiniPanelView: View {
                 Divider()
                 Button("Minimize to menu bar") { controller.minimizeToMenuBar() }
                 Button("Fold into circle") { controller.collapse() }
-                Button("Undo last change") { workspace.undo() }.disabled(!workspace.canUndo)
+                Button("Undo last change") { workspace.undo() }.keyboardShortcut("z", modifiers: .command).disabled(!workspace.canUndo)
                 Button(workspace.trash.isEmpty ? "Recently deleted" : "Recently deleted (\(workspace.trash.count))") { showTrash = true }
                 Divider()
                 Button("Appearance…") { showAppearance = true }
@@ -244,14 +257,6 @@ struct MiniPanelView: View {
                 if group.collapsed { Text("\(workspace.items(in: group).count)").font(controller.font(size: 9)).foregroundStyle(.secondary) }
                 Spacer()
                 NoteDragHandle(workspace: workspace, source: NoteDrag(kind: .category, id: group.id), name: group.name)
-                if workspace.categories.count > 1 {
-                    Button { categoryPendingDelete = group } label: {
-                        Image(systemName: "trash").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary).frame(width: 22, height: 22)
-                    }
-                    .opacity(hoveredCategory == group.id ? 0.85 : 0.35)
-                    .help("Delete category")
-                    .accessibilityLabel("Delete category " + group.name)
-                }
                 Button { workspace.selectedCategory = group.id; newCategory = false; inputFocused = true } label: {
                     Image(systemName: "plus").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary).frame(width: 22, height: 22)
                 }.opacity(hoveredCategory == group.id ? 1 : 0.45).help("Add to " + group.name).accessibilityLabel("Add to " + group.name)
@@ -609,12 +614,26 @@ struct MiniPanelView: View {
         return label
     }
     private var emptyMessage: String {
+        if workspace.tab == .pending, !showApplePendingTodos, pendingHasAppleImports, !pendingHasOwnIdeas {
+            return "Apple Calendar to-dos are hidden. Your own ideas stay here."
+        }
         switch workspace.statusFilter {
         case .todo: return "A little space for what’s next."
         case .pending: return "Ideas without a date. Move one to a day when you’re ready."
         case .completed: return "Completed tasks will appear here."
         case .cancelled: return "Cancelled tasks will appear here."
         }
+    }
+    private var pendingHasAppleImports: Bool {
+        workspace.document.categories.flatMap(\.items).contains { $0.status == .pending && $0.calendarEventKey != nil }
+    }
+    private var pendingHasOwnIdeas: Bool {
+        workspace.document.categories.flatMap(\.items).contains { $0.status == .pending && $0.calendarEventKey == nil }
+    }
+    private func refreshAppleDeadlines() {
+        let connection = AppleCalendarConnection.shared
+        connection.refresh(day: workspace.selectedDay)
+        connection.syncImportedPending(into: workspace)
     }
     private var foldUpGesture: some Gesture {
         DragGesture(minimumDistance: 28)
@@ -715,13 +734,23 @@ private struct NoteRow: View {
         }
     }
     private var taskText: some View {
-        Text(item.title).font(controller.taskFont()).lineSpacing(3)
-            .foregroundStyle((item.textColor.map { Color(noteHex: $0) } ?? controller.ink).opacity(checked ? 0.46 : 0.95))
-            .padding(.horizontal, item.highlight == nil ? 0 : 4).padding(.vertical, item.highlight == nil ? 0 : 2)
-            .background(item.highlight.map { Color(noteHex: $0).opacity(controller.theme == .dark ? 0.3 : 0.4) } ?? .clear, in: RoundedRectangle(cornerRadius: 4))
-            .strikethrough(checked).fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 2)
-            .onTapGesture(count: 2) { edit() }.help("Double-click or right-click to rename this task")
+        VStack(alignment: .leading, spacing: 3) {
+            Text(item.title).font(controller.taskFont()).lineSpacing(3)
+                .foregroundStyle((item.textColor.map { Color(noteHex: $0) } ?? controller.ink).opacity(checked ? 0.46 : 0.95))
+                .padding(.horizontal, item.highlight == nil ? 0 : 4).padding(.vertical, item.highlight == nil ? 0 : 2)
+                .background(item.highlight.map { Color(noteHex: $0).opacity(controller.theme == .dark ? 0.3 : 0.4) } ?? .clear, in: RoundedRectangle(cornerRadius: 4))
+                .strikethrough(checked).fixedSize(horizontal: false, vertical: true)
+            if let due = TaskDueText.badgeLabel(day: item.dueDay, monthOnly: item.dueMonthOnly, dueMinute: item.dueMinute) {
+                Text(due)
+                    .font(controller.font(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(controller.ink.opacity(0.08), in: Capsule())
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 2)
+        .onTapGesture(count: 2) { edit() }.help("Double-click or right-click to rename this task")
     }
     private func edit() { value = item.title; editing = true; focused = true; controller.editing = true }
     private func finishEdit() { workspace.renameItem(item.id, value); editing = false; controller.editing = false }

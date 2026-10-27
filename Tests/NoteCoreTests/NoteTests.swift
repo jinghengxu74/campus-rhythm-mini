@@ -183,6 +183,17 @@ final class NoteTests: XCTestCase {
         note.completeFromDrag(id)
         XCTAssertTrue(note.categories[0].items.first(where: { $0.id == id })!.done)
     }
+    func testRefreshCalendarDeadlineFillsClockOnExistingImport() {
+        var note = NoteDocument()
+        let group = note.categories[0].id
+        let id = note.importCalendarEvent(key: "cal:evt1", title: "Due essay", category: group, status: .pending, noteDay: nil, dueDay: "2026-11-04")!
+        XCTAssertNil(note.item(withCalendarKey: "cal:evt1")?.dueMinute)
+        note.refreshCalendarDeadline(key: "cal:evt1", dueDay: "2026-11-04", dueMinute: 23 * 60 + 59)
+        let item = note.categories[0].items.first { $0.id == id }!
+        XCTAssertEqual(item.dueDay, "2026-11-04")
+        XCTAssertEqual(item.dueMinute, 23 * 60 + 59)
+        XCTAssertEqual(TaskDueText.badgeLabel(day: item.dueDay, monthOnly: item.dueMonthOnly, dueMinute: item.dueMinute, today: "2026-10-27"), "Wednesday, 4 November · 23:59 (8 days away)")
+    }
     func testSectionAndTaskPriorityOrderSurviveRelaunch() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("note.json")
         var note = NoteDocument(); let group = note.categories[2].id

@@ -13,6 +13,28 @@ public struct TaskDueDraft: Equatable {
     }
 }
 
+public enum CalendarDeadline {
+    /// Canvas-style work on a calendar: dues, presentations, readings, reflections, write-ups.
+    public static func isAssignment(_ title: String) -> Bool {
+        let text = title.lowercased()
+        let keys = ["due", "deadline", "present", "presentation", "reflection", "required reading", "write-up", "write up", "analytic", "challenge", "assignment", "quiz", "exam", "submit", "upload", "peer evaluation"]
+        return keys.contains { text.contains($0) }
+    }
+    public static func isHoliday(_ title: String) -> Bool {
+        let text = title.lowercased()
+        return text.contains("public holiday") || text.contains("recreation day") || text.contains("melbourne cup")
+    }
+    public static func isNoise(_ title: String) -> Bool {
+        let text = title.lowercased()
+        return isHoliday(title) || text.contains("formula") || text.contains("grand prix")
+    }
+    /// A repeating class block such as "ECON 4999Z (L1)", not a piece of work.
+    public static func isClassSession(_ title: String) -> Bool {
+        if isAssignment(title) { return false }
+        return title.range(of: #"\([LTlt]\d+\)"#, options: .regularExpression) != nil
+    }
+}
+
 public enum TaskDueText {
     private static let suffixPattern = #"\s@\s*(.+)$"#
 
@@ -33,24 +55,37 @@ public enum TaskDueText {
         parse(raw, referenceDay: referenceDay).title
     }
 
-    public static func badgeLabel(day: String?, monthOnly: Bool, dueMinute: Int?) -> String? {
+    public static func badgeLabel(day: String?, monthOnly: Bool, dueMinute: Int?, today: String = NoteDay.key()) -> String? {
         guard let day, NoteDay.isValid(day), let date = NoteDay.date(day) else { return nil }
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US")
-        if monthOnly {
-            formatter.dateFormat = "MMMM"
-            var label = formatter.string(from: date)
-            if let dueMinute, dueMinute >= 0, dueMinute < 24 * 60 {
-                label += String(format: " · %d:%02d", dueMinute / 60, dueMinute % 60)
-            }
-            return label
-        }
-        formatter.dateFormat = "EEE d MMM"
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_GB")
+        formatter.timeZone = .autoupdatingCurrent
+        formatter.dateFormat = monthOnly ? "MMMM" : "EEEE, d MMMM"
         var label = formatter.string(from: date)
+        guard !monthOnly else { return label }
         if let dueMinute, dueMinute >= 0, dueMinute < 24 * 60 {
             label += String(format: " · %d:%02d", dueMinute / 60, dueMinute % 60)
         }
+        if let away = dayDistance(from: today, to: day) {
+            label += " (" + awayPhrase(away) + ")"
+        }
         return label
+    }
+
+    private static func dayDistance(from today: String, to day: String) -> Int? {
+        guard let start = NoteDay.date(today), let end = NoteDay.date(day) else { return nil }
+        return Calendar(identifier: .gregorian).dateComponents([.day], from: start, to: end).day
+    }
+
+    private static func awayPhrase(_ days: Int) -> String {
+        switch days {
+        case 0: return "today"
+        case 1: return "1 day away"
+        case let count where count > 1: return "\(count) days away"
+        case -1: return "1 day ago"
+        default: return "\(abs(days)) days ago"
+        }
     }
 
     public struct ChipParts: Equatable {
@@ -67,6 +102,23 @@ public enum TaskDueText {
     }
 
     /// Chip text for DDL: `November`, or `Mon 10/27`, or nil when unset.
+    /// First clock time in a Canvas title or notes, such as `11:59pm` or `23:59`.
+    public static func clockMinute(in text: String) -> Int? {
+        let normalized = text
+            .replacingOccurrences(of: "a.m.", with: "am", options: .caseInsensitive)
+            .replacingOccurrences(of: "p.m.", with: "pm", options: .caseInsensitive)
+            .replacingOccurrences(of: "a.m", with: "am", options: .caseInsensitive)
+            .replacingOccurrences(of: "p.m", with: "pm", options: .caseInsensitive)
+        let pattern = #"\b(\d{1,2}):(\d{2})\s*(am|pm)?\b|\b(\d{1,2})\s*(am|pm)\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+        let ns = normalized as NSString
+        let matches = regex.matches(in: normalized, range: NSRange(location: 0, length: ns.length))
+        for match in matches {
+            if let minute = flexibleClock(ns.substring(with: match.range)) { return minute }
+        }
+        return nil
+    }
+
     public static func chipLine(day: String?, monthOnly: Bool) -> String? {
         guard let day, NoteDay.isValid(day), let date = NoteDay.date(day) else { return nil }
         let locale = Locale(identifier: "en_US")
@@ -142,6 +194,24 @@ public enum TaskDueText {
             resolved = calendar.date(from: parts) ?? resolved
         }
         return resolved
+    }
+
+    private static func flexibleClock(_ token: String) -> Int? {
+        let lower = token.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let mer = lower.hasSuffix("pm") ? "pm" : (lower.hasSuffix("am") ? "am" : nil)
+        let clock = lower.replacingOccurrences(of: "am", with: "").replacingOccurrences(of: "pm", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = clock.split(separator: ":")
+        guard let hour = Int(parts[0]) else { return nil }
+        let minute = parts.count > 1 ? (Int(parts[1]) ?? -1) : 0
+        guard minute >= 0, minute < 60 else { return nil }
+        if let mer {
+            guard hour >= 1, hour <= 12 else { return nil }
+            var h = hour % 12
+            if mer == "pm" { h += 12 }
+            return h * 60 + minute
+        }
+        guard hour >= 0, hour < 24 else { return nil }
+        return hour * 60 + minute
     }
 
     private static func parseClock(_ token: String) -> Int? {

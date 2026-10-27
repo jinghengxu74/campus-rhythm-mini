@@ -25,6 +25,9 @@ final class FloatingPanel: NSPanel {
     @Published var backgroundOpacity = UserDefaults.standard.object(forKey: "noteGlassPaperOpacityV1") as? Double ?? 0.65 {
         didSet { UserDefaults.standard.set(backgroundOpacity, forKey: "noteGlassPaperOpacityV1"); applyAppearance() }
     }
+    @Published var circleOpacity = UserDefaults.standard.object(forKey: "noteCircleOpacityV1") as? Double ?? 0.55 {
+        didSet { UserDefaults.standard.set(circleOpacity, forKey: "noteCircleOpacityV1"); applyAppearance() }
+    }
     @Published var glassFinish = NoteGlassFinish(rawValue: UserDefaults.standard.string(forKey: "noteGlassFinishV1") ?? "glass") ?? .glass {
         didSet {
             UserDefaults.standard.set(glassFinish.rawValue, forKey: "noteGlassFinishV1")
@@ -59,6 +62,7 @@ final class FloatingPanel: NSPanel {
     private(set) var workspace: Workspace!
     private var observer: NSObjectProtocol?
     private var menuObserver: NSObjectProtocol?
+    private var undoMonitor: Any?
     private var dateTimer: Timer?
     private var observedToday = NoteDay.key()
     private var autoFoldWorkItem: DispatchWorkItem?
@@ -161,6 +165,17 @@ final class FloatingPanel: NSPanel {
                 self.objectWillChange.send()
             }
         }
+        if primary, undoMonitor == nil {
+            undoMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, event.modifierFlags.contains(.command), !event.modifierFlags.contains(.shift), event.charactersIgnoringModifiers?.lowercased() == "z" else { return event }
+                if let text = NSApp.keyWindow?.firstResponder as? NSTextView, !text.string.isEmpty {
+                    return event
+                }
+                guard self.workspace?.canUndo == true else { return event }
+                self.workspace?.undo()
+                return nil
+            }
+        }
         switch primary ? UserDefaults.standard.string(forKey: "notePresentation") : "note" {
         case "menu": minimizeToMenuBar()
         case "circle": bubble.orderFrontRegardless()
@@ -189,7 +204,7 @@ final class FloatingPanel: NSPanel {
         guard !loadingAppearance else { return }; saveAppearance()
         panel?.appearance = theme.appearance; bubble?.appearance = theme.appearance
         (panel?.contentView as? NoteSurfaceView)?.configure(theme: theme, edge: edgeStyle, paper: paper, opacity: backgroundOpacity, finish: glassFinish)
-        (bubble?.contentView as? NoteSurfaceView)?.configure(theme: theme, edge: .rounded, paper: .clear, opacity: 0, finish: .glass)
+        (bubble?.contentView as? NoteSurfaceView)?.configure(theme: theme, edge: .rounded, paper: paper, opacity: circleOpacity, finish: .glass)
         refreshGlassMaterial()
         panel?.hasShadow = edgeStyle != .minimal
     }
@@ -426,7 +441,10 @@ final class FloatingPanel: NSPanel {
         }
         let filter = add(menu, "Show tasks", nil); filter.submenu = filters
         add(menu, "New category…", #selector(newCategory))
-        add(menu, "Undo last change", #selector(undo)).isEnabled = workspace.canUndo
+        let undoItem = add(menu, "Undo last change", #selector(undo))
+        undoItem.keyEquivalent = "z"
+        undoItem.keyEquivalentModifierMask = .command
+        undoItem.isEnabled = workspace.canUndo
         menu.addItem(.separator())
         add(menu, enabled ? "Turn off" : "Turn on", #selector(onOff))
         let quit = add(menu, "Quit", #selector(quit)); quit.keyEquivalent = "q"
@@ -475,10 +493,10 @@ struct NoteCircle: View {
     @ObservedObject var controller: AppController
     var body: some View {
         ZStack {
-            NoteLiquidGlassOrb(theme: controller.theme, paper: Color(nsColor: controller.paper))
+            NoteLiquidGlassOrb(theme: controller.theme, paper: Color(nsColor: controller.paper), strength: controller.circleOpacity)
             Text("\(workspace.openCount)")
                 .font(controller.font(size: 12, weight: .semibold))
-                .foregroundStyle(controller.theme == .dark ? Color.white.opacity(0.9) : Color(white: 0.1).opacity(0.88))
+                .foregroundStyle(controller.ink)
                 .shadow(color: controller.theme == .dark ? .black.opacity(0.35) : .white.opacity(0.4), radius: 0.5, y: controller.theme == .dark ? 0.5 : -0.5)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

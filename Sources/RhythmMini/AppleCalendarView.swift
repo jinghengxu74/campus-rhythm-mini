@@ -36,23 +36,41 @@ import NoteCore
         return event.calendar.calendarIdentifier + ":" + id
     }
     static func isCalendarTodo(_ event: EKEvent) -> Bool {
-        let title = (event.title ?? "").lowercased()
-        if title.hasPrefix("due") || title.contains(" due ") || title.contains("deadline") || title.contains("canvas") || title.contains("to-do") || title.contains("todo") { return true }
-        return event.isAllDay && UserDefaults.standard.object(forKey: "noteSyncAppleAllDayEvents") as? Bool ?? false
+        let title = event.title ?? ""
+        if CalendarDeadline.isClassSession(title) || CalendarDeadline.isNoise(title) { return false }
+        if CalendarDeadline.isAssignment(title) { return true }
+        return event.isAllDay
     }
-    func futureAllDayTodos(from day: String, horizonDays: Int = 400) -> [(key: String, title: String, dueDay: String)] {
+    static func dueMinute(for event: EKEvent) -> Int? {
+        let blob = [event.title, event.notes, event.location, event.url?.absoluteString].compactMap { $0 }.joined(separator: "\n")
+        let written = TaskDueText.clockMinute(in: blob)
+        if !event.isAllDay {
+            let parts = Calendar.current.dateComponents([.hour, .minute], from: event.startDate)
+            if let hour = parts.hour, let minute = parts.minute, hour >= 0, minute >= 0 {
+                let clock = hour * 60 + minute
+                if clock > 0 { return clock }
+            }
+        }
+        return written
+    }
+    func syncImportedPending(into workspace: Workspace) {
+        let enabled = UserDefaults.standard.object(forKey: "noteSyncAppleCalendarToPending") as? Bool ?? true
+        guard enabled, allowed else { return }
+        workspace.syncAppleCalendarPending(keys: futureAllDayTodos(from: NoteDay.key()))
+    }
+    func futureAllDayTodos(from day: String, horizonDays: Int = 400) -> [(key: String, title: String, dueDay: String, dueMinute: Int?)] {
         guard allowed, let start = NoteDay.date(day), let end = Calendar.current.date(byAdding: .day, value: horizonDays, to: start) else { return [] }
         let chosen = readableCalendars.filter { selected($0.calendarIdentifier) }
         guard !chosen.isEmpty else { return [] }
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: chosen)
         let found = store.events(matching: predicate)
-        var rows: [(key: String, title: String, dueDay: String)] = []
-        for event in found where event.isAllDay && Self.isCalendarTodo(event) {
+        var rows: [(key: String, title: String, dueDay: String, dueMinute: Int?)] = []
+        for event in found where Self.isCalendarTodo(event) {
             let dueDay = NoteDay.key(event.startDate)
             guard dueDay >= day else { continue }
             let title = (event.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty else { continue }
-            rows.append((key: Self.stableEventKey(event), title: title, dueDay: dueDay))
+            rows.append((key: Self.stableEventKey(event), title: title, dueDay: dueDay, dueMinute: Self.dueMinute(for: event)))
         }
         return rows
     }
@@ -90,15 +108,14 @@ struct AppleCalendarView: View {
     @AppStorage("noteHiddenApplePlaceholders") private var hiddenJSON = "[]"
     @AppStorage("noteSyncAppleCalendarToPending") private var syncToPending = true
     @AppStorage("noteShowAppleCalendarTodos") private var showCalendarTodos = true
-    @AppStorage("noteSyncAppleAllDayEvents") private var syncAllAllDay = false
+    @AppStorage("noteSyncAppleAllDayEvents") private var syncAllAllDay = true
     private var hidden: Set<String> { Set((try? JSONDecoder().decode([String].self, from: Data(hiddenJSON.utf8))) ?? []) }
     private func key(_ event: EKEvent) -> String { AppleCalendarConnection.stableEventKey(event) + ":" + day }
     private func dragPayload(_ event: EKEvent) -> NoteCalendarDragPayload {
-        NoteCalendarDragPayload(key: AppleCalendarConnection.stableEventKey(event), title: event.title ?? "Untitled event", dueDay: NoteDay.key(event.startDate))
+        NoteCalendarDragPayload(key: AppleCalendarConnection.stableEventKey(event), title: event.title ?? "Untitled event", dueDay: NoteDay.key(event.startDate), dueMinute: AppleCalendarConnection.dueMinute(for: event))
     }
     private func syncPendingIfNeeded() {
-        guard syncToPending, connection.allowed else { return }
-        workspace.syncAppleCalendarPending(keys: connection.futureAllDayTodos(from: NoteDay.key()))
+        connection.syncImportedPending(into: workspace)
     }
     private func hide(_ event: EKEvent) {
         var values = hidden; values.insert(key(event))

@@ -117,6 +117,19 @@ struct NoteAppearanceView: View {
                     Text("Solid paper").font(controller.font(size: 9)).foregroundStyle(.tertiary)
                 }
 
+                Text("Floating").font(controller.font(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                HStack {
+                    Text("Circle").font(controller.font(size: 10))
+                    Spacer()
+                    Text("\(Int((controller.circleOpacity * 100).rounded()))%").font(controller.font(size: 10))
+                }
+                Slider(value: $controller.circleOpacity, in: 0.2...1).accessibilityLabel("Floating circle opacity")
+                HStack {
+                    Text("Clear glass").font(controller.font(size: 9)).foregroundStyle(.tertiary)
+                    Spacer()
+                    Text("Stronger color").font(controller.font(size: 9)).foregroundStyle(.tertiary)
+                }
+
                 VStack(alignment: .leading, spacing: 6) {
                     ColorPicker("Paper", selection: Binding(get: { Color(nsColor: controller.paper) }, set: { controller.paperHex = $0.noteHex }), supportsOpacity: false)
                         .font(controller.font(size: 10))
@@ -150,7 +163,7 @@ struct NoteAppearanceView: View {
             }
             .padding(14)
         }
-        .frame(width: 280, height: 460)
+        .frame(width: 280, height: 600)
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
         .background {

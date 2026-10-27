@@ -24,6 +24,7 @@ struct NoteCalendarDragPayload: Codable, Equatable {
     let key: String
     let title: String
     let dueDay: String
+    var dueMinute: Int? = nil
 }
 
 @MainActor func noteCalendarDragProvider(_ payload: NoteCalendarDragPayload) -> NSItemProvider {
@@ -172,7 +173,7 @@ struct NoteStatusDropZone: ViewModifier {
                 if let payload = workspace.calendarDragging {
                     guard tab == .todo || tab == .pending else { workspace.cancelDrag(); return false }
                     let status: NoteStatus = tab == .pending ? .pending : .todo
-                    let ok = workspace.importAppleCalendarEvent(key: payload.key, title: payload.title, dueDay: payload.dueDay, as: status)
+                    let ok = workspace.importAppleCalendarEvent(key: payload.key, title: payload.title, dueDay: payload.dueDay, dueMinute: payload.dueMinute, as: status)
                     workspace.cancelDrag()
                     return ok
                 }

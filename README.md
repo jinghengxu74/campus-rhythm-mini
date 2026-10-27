@@ -12,7 +12,7 @@
 
 ## Appearance and windows
 
-**… → Appearance** provides Light / Dark, **Rounded Glass / Compact / Minimal** edges, Glass / Frosted finishes, paper opacity, paper color and text color. Right-click a task for its own text color or Yellow / Mint / Lavender / Rose / Blue highlight. Appearance settings are kept by note date; font selection applies across the note, controls, menus and folded-circle count.
+**… → Appearance** provides Light / Dark, **Rounded Glass / Compact / Minimal** edges, Glass / Frosted finishes, paper opacity, a separate floating-circle glass strength, paper color and text color. Category rows no longer keep a trash button in view. Delete a category from its right-click menu. **⌘Z** walks back the last 30 saved changes, including a task or category removed by mistake. Right-click a task for its own text color or Yellow / Mint / Lavender / Rose / Blue highlight. Appearance settings are kept by note date; font selection applies across the note, controls, menus and folded-circle count.
 
 The circle-with-dot control folds the note into a 32 pt circle. Drag it anywhere; only a click unfolds it. The circle tooltip identifies its date. Drag the header grip to move a full note, and the bottom-right grip to resize it. Pinning controls whether other windows can cover it. Extra windows can be closed without deleting their tasks; the menu bar keeps the app available.
 

@@ -227,14 +227,22 @@ public struct NoteDocument: Codable, Equatable {
     public func item(withCalendarKey key: String) -> NoteItem? {
         categories.flatMap(\.items).first { $0.calendarEventKey == key }
     }
-    @discardableResult public mutating func importCalendarEvent(key: String, title: String, category id: UUID, status: NoteStatus, noteDay: String?, dueDay: String) -> UUID? {
+    @discardableResult public mutating func importCalendarEvent(key: String, title: String, category id: UUID, status: NoteStatus, noteDay: String?, dueDay: String, dueMinute: Int? = nil) -> UUID? {
         guard item(withCalendarKey: key) == nil else { return nil }
         guard let newID = addItem(title, category: id, status: status, day: noteDay) else { return nil }
         editItem(newID) { item in
             item.calendarEventKey = key
             item.setDeadline(day: dueDay, monthOnly: false)
+            if let dueMinute { item.setDue(minute: dueMinute) }
         }
         return newID
+    }
+    public mutating func refreshCalendarDeadline(key: String, dueDay: String, dueMinute: Int?) {
+        guard let existing = item(withCalendarKey: key) else { return }
+        editItem(existing.id) { item in
+            item.setDeadline(day: dueDay, monthOnly: false)
+            if let dueMinute { item.setDue(minute: dueMinute) }
+        }
     }
     public mutating func reorderCompleted(_ id: UUID, dayID: String, relativeTo anchor: UUID?, after: Bool, calendar: Calendar = .autoupdatingCurrent) {
         guard let location = itemLocation(id), categories[location.category].items[location.row].status == .completed else { return }

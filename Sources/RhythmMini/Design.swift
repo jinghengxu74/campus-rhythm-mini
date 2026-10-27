@@ -152,47 +152,50 @@ struct NoteDeskSkinChip: View {
     }
 }
 
-/// Fixed-size specular rim for the folded circle — no hover scale; follows light/dark theme.
+/// Apple-style liquid glass. The desk skin is a tint through the glass, not a solid fill.
 struct NoteLiquidGlassOrb: View {
     var theme: NoteTheme
     var paper: Color?
+    var strength: Double = 0.55
     var body: some View {
         GeometryReader { proxy in
             let d = min(proxy.size.width, proxy.size.height)
             let dark = theme == .dark
-            let desk = paper ?? (dark ? Color(white: 0.12) : Color.white.opacity(0.5))
+            let desk = paper ?? (dark ? Color(white: 0.22) : Color.white)
+            let tint = min(1, max(0.15, strength))
             ZStack {
+                Circle().fill(desk.opacity((dark ? 0.55 : 0.34) * tint))
                 Circle()
                     .fill(
                         RadialGradient(
                             colors: dark
-                                ? [desk.opacity(0.95), desk.opacity(0.55), Color.black.opacity(0.78)]
-                                : [Color.white.opacity(0.62), desk.opacity(0.35), Color.white.opacity(0.08)],
-                            center: UnitPoint(x: 0.38, y: 0.22),
+                                ? [Color.white.opacity(0.28), Color.white.opacity(0.06), Color.black.opacity(0.18)]
+                                : [Color.white.opacity(0.78), Color.white.opacity(0.22), Color.white.opacity(0.04)],
+                            center: UnitPoint(x: 0.36, y: 0.22),
                             startRadius: 0,
-                            endRadius: d * 0.62
+                            endRadius: d * 0.68
                         )
                     )
                 Circle()
                     .strokeBorder(
                         LinearGradient(
                             colors: dark
-                                ? [Color.white.opacity(0.55), Color.white.opacity(0.12), Color.black.opacity(0.35), Color.white.opacity(0.22)]
-                                : [Color.white.opacity(0.95), Color.white.opacity(0.35), Color.white.opacity(0.08), Color.white.opacity(0.42)],
-                            startPoint: .top,
-                            endPoint: .bottom
+                                ? [Color.white.opacity(0.7), Color.white.opacity(0.12), Color.white.opacity(0.28)]
+                                : [Color.white.opacity(0.95), Color.white.opacity(0.25), Color.white.opacity(0.55)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         ),
-                        lineWidth: 1
+                        lineWidth: 1.1
                     )
                 Ellipse()
                     .fill(
                         LinearGradient(
-                            colors: [Color.white.opacity(dark ? 0.35 : 0.72), Color.white.opacity(0)],
+                            colors: [Color.white.opacity(dark ? 0.42 : 0.85), Color.white.opacity(0)],
                             startPoint: .top,
                             endPoint: .bottom
                         )
                     )
-                    .frame(width: d * 0.52, height: d * 0.2)
+                    .frame(width: d * 0.5, height: d * 0.2)
                     .offset(y: -d * 0.2)
             }
         }
@@ -308,8 +311,6 @@ final class NoteSurfaceView: NSView {
         guard circle, bounds.width > 1, bounds.height > 1 else { return }
         let side = min(bounds.width, bounds.height)
         if #available(macOS 26.0, *), let glass = effect as? NSGlassEffectView {
-            layer?.mask = nil
-            glass.layer?.mask = nil
             glass.cornerRadius = side / 2
             glass.style = .clear
         } else if let material = effect as? NSVisualEffectView {
@@ -319,16 +320,26 @@ final class NoteSurfaceView: NSView {
             material.isEmphasized = true
         }
     }
+    private func shapePath(radius: CGFloat) -> CGPath {
+        if circle {
+            let side = min(bounds.width, bounds.height)
+            let rect = CGRect(x: (bounds.width - side) / 2, y: (bounds.height - side) / 2, width: side, height: side)
+            return CGPath(ellipseIn: rect, transform: nil)
+        }
+        return CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
+    }
     private func applyCornerClipping() {
         let radius = circle ? min(bounds.width, bounds.height) / 2 : cornerRadius
-        guard radius > 0, bounds.width > 1 else { return }
-        if circle {
-            layer?.cornerRadius = 0
-            layer?.masksToBounds = false
-        } else {
-            layer?.cornerRadius = radius
-            layer?.masksToBounds = true
-        }
+        guard radius > 0, bounds.width > 1, bounds.height > 1 else { return }
+        let path = shapePath(radius: radius)
+        let rootMask = CAShapeLayer()
+        rootMask.path = path
+        layer?.mask = rootMask
+        layer?.cornerRadius = 0
+        layer?.masksToBounds = false
+        let effectMask = CAShapeLayer()
+        effectMask.path = path
+        effect?.layer?.mask = effectMask
         effect?.layer?.cornerRadius = radius
         effect?.layer?.masksToBounds = true
         content.layer?.cornerRadius = radius
@@ -354,8 +365,15 @@ final class NoteSurfaceView: NSView {
         content.layer?.cornerRadius = corner
         rim.isHidden = true
         if circle {
-            tint.isHidden = true
-            tint.layer?.backgroundColor = NSColor.clear.cgColor
+            tint.isHidden = false
+            if tint.superview == nil { content.addSubview(tint, positioned: .below, relativeTo: content.subviews.first) }
+            tint.frame = content.bounds
+            tint.autoresizingMask = [.width, .height]
+            let base = (paper.alphaComponent > 0.01 ? paper : theme.paper).usingColorSpace(.deviceRGB) ?? paper
+            let wash = min(0.72, max(0.08, opacity))
+            tint.layer?.backgroundColor = base.withAlphaComponent(theme == .dark ? wash * 0.7 : wash * 0.45).cgColor
+            tint.layer?.cornerRadius = corner
+            tint.layer?.masksToBounds = true
             layer?.backgroundColor = NSColor.clear.cgColor
         } else {
             tint.isHidden = false

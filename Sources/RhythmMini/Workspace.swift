@@ -9,7 +9,7 @@ import NoteCore
     @Published private(set) var canUndo = false
     @Published var events: [NoteCalendarEvent] = []
     var onLocalEdit: (() -> Void)?
-    private var previous: NoteDocument?
+    private var history: [NoteDocument] = []
     private var readFailed = false
     private(set) var owner: String?
     private var file: NoteFile
@@ -32,28 +32,36 @@ import NoteCore
             if before != loaded { try file.save(loaded) }
             document = loaded; readFailed = false; error = ""
         } catch { readFailed = true; self.error = "Could not read the note. The original file is kept; editing is paused." }
-        previous = nil; canUndo = false
+        history.removeAll(); canUndo = false
     }
     func change(_ operation: (inout NoteDocument) -> Void) {
         guard !readFailed else { return }
         var next = document; operation(&next); guard next != document else { return }
-        do { try file.save(next); previous = document; canUndo = true; document = next; error = ""; onLocalEdit?() }
+        do {
+            try file.save(next)
+            history.append(document)
+            if history.count > 30 { history.removeFirst() }
+            canUndo = true
+            document = next
+            error = ""
+            onLocalEdit?()
+        }
         catch { self.error = "Could not save. Your previous note is unchanged." }
     }
     func undo() {
-        guard let before = previous, !readFailed else { return }
-        do { try file.save(before); document = before; previous = nil; canUndo = false; error = ""; onLocalEdit?() }
-        catch { self.error = "Could not save the undo. Your note is unchanged." }
+        guard let before = history.popLast(), !readFailed else { return }
+        do { try file.save(before); document = before; canUndo = !history.isEmpty; error = ""; onLocalEdit?() }
+        catch { history.append(before); self.error = "Could not save the undo. Your note is unchanged." }
     }
     func connect(owner: String, document: NoteDocument, events: [NoteCalendarEvent]) throws {
         guard UUID(uuidString: owner) != nil, document.isValid else { throw NoteAccountError.message("Unsupported account note.") }
         let target = NoteFile(url: Self.directory.appendingPathComponent("account-" + owner + ".json"))
         try target.save(document)
-        self.file = target; self.owner = owner; self.document = document; self.events = events; previous = nil; canUndo = false; readFailed = false; error = ""
+        self.file = target; self.owner = owner; self.document = document; self.events = events; history.removeAll(); canUndo = false; readFailed = false; error = ""
     }
     func acceptCloud(_ next: NoteDocument, events: [NoteCalendarEvent]) throws {
         guard next.isValid else { throw NoteAccountError.message("The account note format is unsupported. This Mac’s note was kept.") }
-        if next != document { try file.save(next); document = next; previous = nil; canUndo = false }
+        if next != document { try file.save(next); document = next; history.removeAll(); canUndo = false }
         self.events = events
     }
     func retainCurrentLocally() throws {
@@ -127,7 +135,23 @@ enum NoteTab: String, CaseIterable, Identifiable {
         }.store(in: &subscriptions)
         repository.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &subscriptions)
     }
-    func items(in category: NoteCategory) -> [NoteItem] { document.items(in: category, status: statusFilter, day: selectedDay) }
+    func items(in category: NoteCategory) -> [NoteItem] {
+        var rows = document.items(in: category, status: statusFilter, day: selectedDay)
+        guard tab == .pending else { return rows }
+        if !Self.showApplePendingTodos { rows = rows.filter { $0.calendarEventKey == nil } }
+        return rows.sorted { left, right in
+            switch (left.dueDay, right.dueDay) {
+            case let (a?, b?) where a != b: return a < b
+            case let (a?, b?) where a == b: return (left.dueMinute ?? 24 * 60) < (right.dueMinute ?? 24 * 60)
+            case (.some, .none): return true
+            case (.none, .some): return false
+            default: return left.title.localizedCaseInsensitiveCompare(right.title) == .orderedAscending
+            }
+        }
+    }
+    static var showApplePendingTodos: Bool {
+        UserDefaults.standard.object(forKey: "noteShowApplePendingTodos") as? Bool ?? true
+    }
     func shiftDay(_ offset: Int) { selectedDay = NoteDay.offset(selectedDay, by: offset) }
     func add(_ title: String) -> Bool {
         let value = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -192,22 +216,28 @@ enum NoteTab: String, CaseIterable, Identifiable {
         calendarDragging = payload
         return noteCalendarDragProvider(payload)
     }
-    @discardableResult func importAppleCalendarEvent(key: String, title: String, dueDay: String, as status: NoteStatus) -> Bool {
+    @discardableResult func importAppleCalendarEvent(key: String, title: String, dueDay: String, dueMinute: Int? = nil, as status: NoteStatus) -> Bool {
         guard let category = selectedCategory ?? categories.first?.id else { return false }
-        if document.item(withCalendarKey: key) != nil { return false }
+        if document.item(withCalendarKey: key) != nil {
+            repository.change { $0.refreshCalendarDeadline(key: key, dueDay: dueDay, dueMinute: dueMinute) }
+            return false
+        }
         var imported = false
         repository.change { doc in
-            imported = doc.importCalendarEvent(key: key, title: title, category: category, status: status, noteDay: status == .todo ? selectedDay : nil, dueDay: dueDay) != nil
+            imported = doc.importCalendarEvent(key: key, title: title, category: category, status: status, noteDay: status == .todo ? selectedDay : nil, dueDay: dueDay, dueMinute: dueMinute) != nil
         }
         if imported, status == .pending || status == .todo { tab = status == .pending ? .pending : .todo }
         return imported
     }
-    func syncAppleCalendarPending(keys: [(key: String, title: String, dueDay: String)]) {
+    func syncAppleCalendarPending(keys: [(key: String, title: String, dueDay: String, dueMinute: Int?)]) {
         guard let category = categories.first?.id else { return }
         repository.change { doc in
             for entry in keys {
-                guard doc.item(withCalendarKey: entry.key) == nil else { continue }
-                _ = doc.importCalendarEvent(key: entry.key, title: entry.title, category: category, status: .pending, noteDay: nil, dueDay: entry.dueDay)
+                if doc.item(withCalendarKey: entry.key) != nil {
+                    doc.refreshCalendarDeadline(key: entry.key, dueDay: entry.dueDay, dueMinute: entry.dueMinute)
+                } else {
+                    _ = doc.importCalendarEvent(key: entry.key, title: entry.title, category: category, status: .pending, noteDay: nil, dueDay: entry.dueDay, dueMinute: entry.dueMinute)
+                }
             }
         }
     }
