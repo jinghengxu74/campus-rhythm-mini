@@ -62,7 +62,6 @@ final class FloatingPanel: NSPanel {
     private var dateTimer: Timer?
     private var observedToday = NoteDay.key()
     private var autoFoldWorkItem: DispatchWorkItem?
-    private var collapsing = false
     private var frameName: String { "RhythmNoteWindowV3-" + (workspace?.selectedDay ?? "today") }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -235,16 +234,8 @@ final class FloatingPanel: NSPanel {
             var target = panel.frame
             target = frame(anchoredTopRight: anchor, size: target.size)
             target = clampedFrame(target)
-            let side = min(bubbleFrame.width, bubbleFrame.height)
-            let small = frame(anchoredTopRight: anchor, size: NSSize(width: side, height: side))
-            panel.setFrame(small, display: false)
+            panel.setFrame(target, display: true)
             panel.alphaValue = 1
-            panel.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.18
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
-                panel.animator().setFrame(target, display: true)
-            }
         } else {
             fitOnScreen()
         }
@@ -257,8 +248,7 @@ final class FloatingPanel: NSPanel {
         editing = false
         panel.orderOut(nil); bubble.orderOut(nil); remember("menu")
     }
-    func collapse(animated: Bool = false) {
-        guard !collapsing else { return }
+    func collapse() {
         workspace.cancelDrag()
         editing = false
         cancelAutoFold()
@@ -267,37 +257,18 @@ final class FloatingPanel: NSPanel {
         let side = bubble.frame.width > 1 ? bubble.frame.width : 44
         let anchor = topRightAnchor(of: start)
         let target = frame(anchoredTopRight: anchor, size: NSSize(width: side, height: side))
-        if !animated {
-            panel.orderOut(nil)
-            bubble.setFrame(target, display: false)
-            finishCircleMove()
-            if enabled { bubble.orderFrontRegardless() }
-            remember("circle")
-            return
-        }
-        collapsing = true
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.18
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.55, 0, 0.75, 0.35)
-            panel.animator().setFrame(target, display: true)
-        } completionHandler: { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.panel.orderOut(nil)
-                self.panel.alphaValue = 1
-                self.panel.setFrame(start, display: false)
-                self.bubble.setFrame(target, display: false)
-                self.finishCircleMove()
-                if self.enabled { self.bubble.orderFrontRegardless() }
-                self.remember("circle")
-                self.collapsing = false
-            }
-        }
+        panel.orderOut(nil)
+        panel.alphaValue = 1
+        panel.setFrame(start, display: false)
+        bubble.setFrame(target, display: false)
+        finishCircleMove()
+        if enabled { bubble.orderFrontRegardless() }
+        remember("circle")
     }
 
     func foldUnlessPinned() {
         guard !pinned, panel.isVisible, !bubble.isVisible else { return }
-        collapse(animated: true)
+        collapse()
     }
 
     func openDayForReview(_ day: String) {
@@ -386,7 +357,7 @@ final class FloatingPanel: NSPanel {
 
     private func scheduleAutoFold() {
         cancelAutoFold()
-        let blocked = pinned || !panel.isVisible || bubble.isVisible || editing || collapsing
+        let blocked = pinned || !panel.isVisible || bubble.isVisible || editing
         // #region agent log
         AgentDebugLog.emit(hypothesisId: "C", location: "App:scheduleAutoFold", message: blocked ? "auto-fold skipped" : "auto-fold scheduled", data: [
             "pinned": String(pinned),
@@ -394,12 +365,12 @@ final class FloatingPanel: NSPanel {
             "panelVisible": String(panel.isVisible),
         ])
         // #endregion
-        guard !pinned, panel.isVisible, !bubble.isVisible, !editing, !collapsing else { return }
+        guard !pinned, panel.isVisible, !bubble.isVisible, !editing else { return }
         let work = DispatchWorkItem { [weak self] in
             // #region agent log
             AgentDebugLog.emit(hypothesisId: "C", location: "App:autoFoldFire", message: "collapse animated")
             // #endregion
-            self?.collapse(animated: true)
+            self?.collapse()
         }
         autoFoldWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: work)

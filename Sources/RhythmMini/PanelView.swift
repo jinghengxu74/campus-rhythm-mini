@@ -109,7 +109,7 @@ struct MiniPanelView: View {
                 }
                 Divider()
                 Button("Minimize to menu bar") { controller.minimizeToMenuBar() }
-                Button("Fold into circle") { controller.collapse(animated: true) }
+                Button("Fold into circle") { controller.collapse() }
                 Button("Undo last change") { workspace.undo() }.disabled(!workspace.canUndo)
                 Button(workspace.trash.isEmpty ? "Recently deleted" : "Recently deleted (\(workspace.trash.count))") { showTrash = true }
                 Divider()
@@ -153,7 +153,7 @@ struct MiniPanelView: View {
                     .foregroundStyle(controller.ink.opacity(controller.pinned ? 0.85 : 0.5)).frame(width: 20, height: 22)
             }.help(controller.pinned ? "Unpin · note can fold when you click away" : "Pin · stay open and on top")
                 .accessibilityLabel(controller.pinned ? "Unpin note" : "Pin note")
-            Button { controller.collapse(animated: true) } label: {
+            Button { controller.collapse() } label: {
                 Image(systemName: "smallcircle.filled.circle").font(.system(size: 13, weight: .medium))
                     .foregroundStyle(controller.ink.opacity(0.58))
                     .frame(width: 24, height: 26).contentShape(Rectangle())
@@ -585,7 +585,7 @@ struct MiniPanelView: View {
             .onEnded { value in
                 guard !controller.pinned, !controller.editing, !inputFocused else { return }
                 if value.translation.height < -44 && abs(value.translation.width) < 72 {
-                    controller.collapse(animated: true)
+                    controller.collapse()
                 }
             }
     }
