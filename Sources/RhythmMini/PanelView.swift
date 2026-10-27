@@ -137,6 +137,9 @@ struct MiniPanelView: View {
             HStack(spacing: 8) {
             Menu {
                 Button(appVersionLabel) {}.disabled(true)
+                Button("Check for updates…") {
+                    NSWorkspace.shared.open(URL(string: "https://github.com/jinghengxu74/campus-rhythm-mini/releases/latest")!)
+                }
                 Divider()
                 Button("Minimize to menu bar") { controller.minimizeToMenuBar() }
                 Button("Fold into circle") { controller.collapse() }

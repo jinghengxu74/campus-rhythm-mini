@@ -1,30 +1,32 @@
 <div align="center">
 
-# Campus Rhythm Mini
+# Campus Rhythm To-Do Notes
 
-**A free macOS to-do sticker** — menu bar note, glass window, fold-to-circle.
+**Local-first macOS desktop sticker** — To-do, Pending, **Done chart**, Events. Fold to a circle on your desk.
 
-Also called **Campus Resume Sticker**. In-app menu title: **Rhythm Note**. Part of [Campus Rhythm](https://github.com/jinghengxu74/campus-rhythm-app).
+Part of [Campus Rhythm](https://github.com/jinghengxu74/campus-rhythm-app) · MIT open source
 
-[![Download](https://img.shields.io/badge/Download-macOS%20arm64-111111?style=for-the-badge&logo=apple)](https://github.com/jinghengxu74/campus-rhythm-app/blob/main/assets/downloads/Campus-Rhythm-Mini-macOS-arm64-v0.9.37.zip)
-[![Showcase](https://img.shields.io/badge/Product-showcase-5b57d9?style=for-the-badge)](https://github.com/jinghengxu74/campus-rhythm-app)
+[![Download latest](https://img.shields.io/badge/Download-latest%20release-111111?style=for-the-badge&logo=apple)](https://github.com/jinghengxu74/campus-rhythm-mini/releases/latest)
+[![Showcase](https://img.shields.io/badge/Docs-showcase-5b57d9?style=for-the-badge)](https://github.com/jinghengxu74/campus-rhythm-app/blob/main/docs/CAMPUS_RHYTHM_TODO_NOTES.md)
 [![Stars](https://img.shields.io/github/stars/jinghengxu74/campus-rhythm-mini?style=social)](https://github.com/jinghengxu74/campus-rhythm-mini/stargazers)
 
-⭐ **Star this repo** if you use the sticker — it helps other students discover it.
+⭐ Star this repo if you fork or use the sticker.
 
 </div>
 
-## Screenshot
+## Why
 
-![Completed tab with seven-day chart](https://raw.githubusercontent.com/jinghengxu74/campus-rhythm-app/main/assets/mac-campus-rhythm-mini-completed-2026-10-27.png)
+Heavy to-do users often have **open lists** but weak **done history**. This app is a glass **sticker** on your Mac: fast capture, real **Completed** archive, seven-day bar chart, optional calendar events — **no cloud unless you connect an account**.
+
+## Screenshots
+
+See the [showcase gallery](https://github.com/jinghengxu74/campus-rhythm-app#macos--campus-rhythm-to-do-notes-desktop-sticker).
 
 ## Download
 
-Pre-built **Apple silicon** zip (unsigned, ad-hoc, macOS 13+):
+[Latest GitHub Release](https://github.com/jinghengxu74/campus-rhythm-mini/releases/latest) (Apple silicon, macOS 13+). Or build below.
 
-**[Campus-Rhythm-Mini-macOS-arm64-v0.9.37.zip](https://github.com/jinghengxu74/campus-rhythm-app/raw/main/assets/downloads/Campus-Rhythm-Mini-macOS-arm64-v0.9.37.zip)**
-
-See the [install guide](https://github.com/jinghengxu74/campus-rhythm-app/blob/main/docs/CAMPUS_RHYTHM_MINI.md) on the showcase repo.
+In the app: **… → Check for updates…**
 
 ## Build
 
@@ -34,16 +36,17 @@ zsh scripts/build.sh
 open dist/Campus\ Rhythm\ Mini.app
 ```
 
-## Features
+Bundle filename stays `Campus Rhythm Mini.app` so existing local data paths keep working; the public product name is **To-Do Notes**.
 
-- **To-do / Pending / Completed / Events** for the selected day
-- Drag reorder, categories, undo, trash, optional **Rhythm** assistant
-- **Completed** tab with a swipeable seven-day bar chart
-- Fold to a **draggable circle**; pin, resize, multiple day windows
-- Optional **Campus Rhythm account** sync with [web Daily notes](https://campus-rhythm-one.vercel.app/notes)
+## Privacy
 
-Local data: `~/Library/Application Support/CampusRhythmMini/` — never commit it.
+**Default: everything stays on your Mac** (`~/Library/Application Support/CampusRhythmMini/`).  
+Details: [PRIVACY_TODO_NOTES.md](https://github.com/jinghengxu74/campus-rhythm-app/blob/main/docs/PRIVACY_TODO_NOTES.md) on the showcase repo.
+
+## Fork
+
+See [FORK.md](https://github.com/jinghengxu74/campus-rhythm-app/blob/main/docs/FORK.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Campus Rhythm naming and artwork remain the maintainer's brand.
+MIT — [LICENSE](LICENSE)
