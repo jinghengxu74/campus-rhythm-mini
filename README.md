@@ -8,10 +8,6 @@ Part of [Campus Rhythm](https://github.com/jinghengxu74/campus-rhythm-app) · MI
 
 [![Download latest](https://img.shields.io/badge/Download-latest%20release-111111?style=for-the-badge&logo=apple)](https://github.com/jinghengxu74/campus-rhythm-mini/releases/latest)
 [![Showcase](https://img.shields.io/badge/Docs-showcase-5b57d9?style=for-the-badge)](https://github.com/jinghengxu74/campus-rhythm-app/blob/main/docs/CAMPUS_RHYTHM_TODO_NOTES.md)
-[![Stars](https://img.shields.io/github/stars/jinghengxu74/campus-rhythm-mini?style=social)](https://github.com/jinghengxu74/campus-rhythm-mini/stargazers)
-
-⭐ Star this repo if you fork or use the sticker.
-
 </div>
 
 ## Why
