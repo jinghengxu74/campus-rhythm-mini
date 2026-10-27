@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-22",
+  "version": "0.9.2",
+  "build": "13",
+  "sha256": "2cee1981edf87941777bd0954f2c98d1bf95934b58c99b39880cff4aadddbc7d",
+  "archivePathsValid": true,
+  "signatureIntegrity": "verified after independent extraction; ad-hoc only",
+  "webTests": 214,
+  "nativeTests": 40,
+  "database": {
+    "snapshotRLS": true,
+    "anonymousSave": false,
+    "authenticatedSave": true,
+    "administrativeHelperClientExecute": false,
+    "ensureRLSTriggerRetained": true
+  },
+  "secretPatternScanFindings": 0,
+  "auditHighAffectedPackages": 19,
+  "rootUpstreamAdvisories": 2,
+  "antivirusScan": "not performed",
+  "appleNotarization": "not completed",
+  "nativeUI": [
+    "normal account restoration and calendar read",
+    "dark completion confirmation readable",
+    "actual completion-day archive",
+    "temporary test deleted; original records retained",
+    "completed-date actions disabled"
+  ],
+  "productionDeployment": "dpl_ApyWvpbKAU8i58N3NYUJdPMqDjs2",
+  "productionReady": true,
+  "productionCode": "ec1657f81e207e20988f93234a5a34bcdb371a92",
+  "productionWebVerified": [
+    "original four open records loaded after fresh reload",
+    "original Memo remains the only completion",
+    "temporary security test absent"
+  ]
+}

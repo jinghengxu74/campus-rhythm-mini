@@ -1,0 +1,6 @@
+{
+  "privateKey": "6oNDdRrsYpin4VELlbXN3h6q/DPiwVcihCqHjvanmtE=",
+  "state": "c574ca9f-ded7-456c-976d-235fb7151af13b8fc078-1ca7-494e-9ed3-b0418902fae8",
+  "callback": "rhythmnote://auth/callback#state=c574ca9f-ded7-456c-976d-235fb7151af13b8fc078-1ca7-494e-9ed3-b0418902fae8&key=BHkartQA_9bLW20gngufetAGdQRL-XubKfeGAsR2lAawHdS-LmbWoTpHR3EwyRN--GN0_0Zq2SHk9C0E-YFhSZs&box=e5v9vfF186uMkBu4Fy4KQrqeIetDlnCv2dccjzc3vlD2wJjt1z46wfqBvg9OMQKgIWc4KJs6iNBoN-qbj0sBifx7iYxO0LWKYz7AJWkc43bapbMTDTkgOQGOQRjv2cU9MuT9C1dvoJpZPVqjT_XmMQyVWf_Qvz_H4n2JaK6kEf6n4AuoT_GvTjvdIGjoqg1aX_iNH7M5JsmdqmN48yF-oAkmfUaHVQ",
+  "expected": "{\"access_token\":\"fixture-access-not-real\",\"refresh_token\":\"fixture-refresh-not-real\",\"user\":{\"id\":\"00000000-0000-4000-8000-000000000099\"}}"
+}
