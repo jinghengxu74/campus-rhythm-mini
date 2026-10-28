@@ -20,7 +20,7 @@ Native Liquid Glass is used on macOS 26+. Earlier macOS versions use a native vi
 
 ## Updates
 
-Rhythm Note checks the public GitHub latest release once every 24 hours while the app is open. **… → Check for updates…** checks immediately. When a newer version exists, a dismissible notice in the note opens the release page; the app does not download or replace itself. Automatic network failures stay quiet, while a manual check reports connection or response errors. Downloads remain ad-hoc signed rather than notarized, so a new install may still need right-click → Open. Versions before 0.9.58 do not have the in-app notice and must be updated manually once.
+Rhythm Note checks the public GitHub latest release once every 24 hours while the app is open. **… → Check for updates…** checks immediately. When a newer version exists, a dismissible notice in the note opens the release page; the app does not download or replace itself. Automatic network failures stay quiet, while a manual check reports connection or response errors. Downloads remain ad-hoc signed rather than notarized. On recent macOS, review the blocked app in System Settings → Privacy & Security; right-click → Open alone may not be sufficient. See the installation guide below. Versions before 0.9.58 do not have the in-app notice and must be updated manually once.
 
 ## Connect your account
 
@@ -51,3 +51,9 @@ Data lives under `~/Library/Application Support/CampusRhythmMini/`. Legacy open 
 - WebCrypto → native CryptoKit handoff interoperability, replay rejection, expiry and tampering are covered by a test-only fixture.
 - The web source includes Notes, desktop connection, serializer support and a backward-compatible database migration. Earlier clients cannot drop the notebook when saving their plan.
 - Live-tested on 2026-10-22: owner browser sign-in, explicit import of five local notes, matching account calendar, Mac-to-web creation, web-to-Mac completion-day archive, web-to-Mac next-day creation/highlight/Pending and test cleanup after website reload, plus account and original-note restoration after process restart. iPhone acceptance remains pending.
+
+## Download and first installation
+
+[Latest Apple-silicon ZIP](https://github.com/jinghengxu74/campus-rhythm-mini/releases/latest/download/Rhythm-Note-macOS-arm64.zip) · [Installation and Apple security warning guide](https://github.com/jinghengxu74/campus-rhythm-app/blob/main/docs/MAC_INSTALL.md)
+
+No developer account or Xcode is required for local notes. macOS 13+ and Apple silicon are required for this package. This is an early test build, not notarized; do not disable system security protections. A valid ad-hoc signature is not independent malware certification.
