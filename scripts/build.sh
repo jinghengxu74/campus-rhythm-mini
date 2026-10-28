@@ -19,8 +19,8 @@ cat > "$MINI_APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>com.campusrhythm.mini</string>
 <key>CFBundleName</key><string>Campus Rhythm Mini</string>
 <key>CFBundleDisplayName</key><string>Campus Rhythm To-Do Notes</string>
-<key>CFBundleVersion</key><string>70</string>
-<key>CFBundleShortVersionString</key><string>0.9.58</string>
+<key>CFBundleVersion</key><string>71</string>
+<key>CFBundleShortVersionString</key><string>0.9.59</string>
 <key>UTExportedTypeDeclarations</key><array><dict>
 <key>UTTypeIdentifier</key><string>com.campusrhythm.note-order</string>
 <key>UTTypeDescription</key><string>Rhythm Note internal order</string>

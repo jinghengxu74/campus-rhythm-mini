@@ -35,7 +35,6 @@ struct MiniPanelView: View {
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         return "Rhythm Note \(version) · build \(build)"
     }
-    private var chartPaperOpacity: Double { controller.backdropOpacity }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -72,6 +71,8 @@ struct MiniPanelView: View {
                     .padding(.bottom, 16)
                 }
                 .frame(maxHeight: .infinity)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
                 .clipped()
                 .onChange(of: completedListScrollTarget) { target in
                     guard let target else { return }
@@ -360,18 +361,18 @@ struct MiniPanelView: View {
         }
     }
     private let weekBarMaxHeight: CGFloat = 44
+    private var completedChartScale: CGFloat { CGFloat(min(1.5, max(1, controller.textScale))) }
 
     private var completedChartSection: some View {
         weekCompleted
             .padding(.horizontal, 20)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
+            .padding(.top, 10)
+            .padding(.bottom, 12)
             .frame(maxWidth: .infinity)
-            .background(Color(nsColor: controller.paper).opacity(chartPaperOpacity))
+            .background(Color.clear)
             .overlay(alignment: .bottom) {
                 Rectangle().fill(controller.ink.opacity(0.08)).frame(height: 1)
             }
-            .zIndex(1)
     }
 
     /// Trackpad horizontal scroll: 56 daily bars, right edge = today, snapped one day at a time.
@@ -436,9 +437,9 @@ struct MiniPanelView: View {
                     }
                     .offset(x: -completedChartScrollX)
                 }
-                .frame(width: viewportWidth, height: 58, alignment: .leading)
+                .frame(width: viewportWidth, height: 78 * completedChartScale, alignment: .leading)
                 .clipped()
-                .padding(.top, 4)
+                .padding(.top, 2)
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
             .onAppear { syncCompletedChartScroll(for: viewportWidth) }
@@ -462,7 +463,7 @@ struct MiniPanelView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(height: 108)
+        .frame(height: 128 * completedChartScale)
         .accessibilityLabel("Completed tasks chart")
         .accessibilityHint("Two-finger swipe horizontally to browse one day at a time. The title totals the seven visible days. Tap a day bar to jump to that day in the list below.")
     }
