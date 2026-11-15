@@ -6,7 +6,7 @@
 
 - **To-do** starts on the selected calendar day and carries forward until Mark complete; a tick alone is still an unconfirmed draft. The same record keeps its original day, order, colors and ID. Future tasks stay hidden before their start day. Hover the date to reveal navigation, click it for a date picker, or use **… → Open next day in new window**. Windows share the same saved document while keeping their own date and tab. A Today window follows the local day at midnight; deliberately selected past/future days stay selected.
 - **Pending** is an undated inbox: ideas you have in mind, without a made-up due date. Right-click a task to move it to today, tomorrow or the selected day.
-- **Completed** groups confirmed completions by their actual local completion day. Tick first to cross out a task, then choose **Mark complete**. Reopening restores its prior open status. Older records without a timestamp remain explicitly undated. The chart scrolls continuously one day at a time across 56 days; its fixed title recalculates the total for the seven currently visible days.
+- **Completed** groups confirmed completions by their actual local completion day. Tick first to cross out a task, then choose **Mark complete**. Reopening restores its prior open status. Older records without a timestamp remain explicitly undated. The chart scrolls continuously one day at a time across 56 days; its fixed title recalculates the total for the seven currently visible days. Each day shows its weekday, month/day and completion count, including zero.
 - **Events** reads your Campus Rhythm calendar for the selected day after account connection. It displays event times in the Mac’s current time zone, retaining all-day dates.
 - Custom categories, folding, task/category priority ordering, editing and undo remain available. Day selection is the start of a work intention, not an assessment deadline or a calendar booking.
 
@@ -24,11 +24,11 @@ Rhythm Note checks the public GitHub latest release once every 24 hours while th
 
 ## Connect your account
 
-Open **… → Connect account**. Connect in the browser with the same Campus Rhythm Google/email account, or use your account’s email/password. Browser handoff is encrypted for a one-time native key; access/refresh tokens never appear as plaintext in a callback URL. The native session is kept in Keychain.
+Open **… → Connect account**. Connect in the browser with the same Campus Rhythm Google/email account, or use your account’s email/password. Browser handoff is encrypted for a one-time native key; access/refresh tokens never appear as plaintext in a callback URL. The current ad-hoc build stores the native session in a local app-support file with owner-only permissions (0600); it is not Keychain-backed or encrypted at rest. Legacy Keychain sessions can be migrated by the app. Do not share or commit this file.
 
 Account notes and local notes remain separate. **Import local notes…** previews the scope and adds local categories, dates, colors and completion history to the account without duplicating IDs. Disconnect returns to the original local note. Account caches and pending edits are isolated by user ID.
 
-[Web Daily notes](https://campus-rhythm-one.vercel.app/notes) uses the same account notebook. Calendar events come from the existing plan. Sync polls every 20 seconds and saves with revision checks; it is not a realtime subscription. Concurrent note changes stop for an explicit conflict choice, with a local backup of the other version. Offline edits remain on this Mac. The Mac client does not request Health data or change Health permissions.
+[Web Daily notes](https://campus-rhythm-one.vercel.app/notes) uses the same account notebook. Calendar events come from the existing plan. Optional sharing of selected Apple calendars adds a read-only snapshot while this Mac is running and authorized; it is off by default and the web cannot write changes back to Apple Calendar. Sync polls every 20 seconds and saves with revision checks; it is not a realtime subscription. Concurrent note changes stop for an explicit conflict choice, with a local backup of the other version. Offline edits remain on this Mac. The Mac client does not request Health data or change Health permissions.
 
 Daily notes are lightweight work intentions. The existing planner’s deadline tasks remain a distinct entity; creating an undated idea does not fabricate a deadline or a scheduled event.
 

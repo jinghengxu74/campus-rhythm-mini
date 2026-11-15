@@ -1,6 +1,9 @@
 import Foundation
 
 public enum NoteSyncRules {
+    public static func notebookForUpload(local: NoteDocument, remote: NoteDocument, base: NoteDocument?, forceLocal: Bool) -> NoteDocument {
+        !forceLocal && local == base ? remote : local
+    }
     public static func hasUnsentCache(base: NoteDocument?, cached: NoteDocument?, remote: NoteDocument) -> Bool {
         guard let base, let cached else { return false }
         return base != cached && cached != remote

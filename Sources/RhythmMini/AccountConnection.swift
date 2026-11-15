@@ -43,7 +43,7 @@ private struct NoteRefreshPayload: Decodable {
     let expires_in: Double?
 }
 /// Session tokens live in the app data folder (mode 600), not Keychain — ad-hoc rebuilds otherwise re-prompt every launch.
-private enum NoteSessionVault {
+@MainActor private enum NoteSessionVault {
     static let legacyService = "com.campusrhythm.note.account.v1"
     static var fileURL: URL { NoteRepository.directory.appendingPathComponent("account-session-v1.json") }
     private static var legacyQuery: [String: Any] {
@@ -236,21 +236,27 @@ private struct NoteAccountAPI {
             guard let snapshot = try await api.read(value) else { throw NoteAccountError.message("Your account plan is unavailable. Local edits were kept.") }
             var plan = try NotePlan(fields: snapshot.plan); let remote = try plan.notebook()
             guard ticket == generation, repository.owner == owner else { return }
-            let local = repository.document
+            let local = repository.document, cloudEvents = plan.events, cloudRawEvents = plan.fields["events"]?.array ?? []
+            if let apple = AppleCalendarConnection.shared.accountEvents() {
+                plan.fields["events"] = .array(AppleCloudEventCodec.merge(existing: cloudRawEvents, apple: apple))
+            }
+            let eventsChanged = (plan.fields["events"]?.array ?? []) != cloudRawEvents
             if useAccount {
                 try NoteFile(url: NoteRepository.directory.appendingPathComponent("conflict-mac-backup-" + owner + ".json")).save(local)
-                try repository.acceptCloud(remote, events: plan.events); lastSynced = remote; try persistBase(remote); conflict = false
-            } else if local == remote {
+                try repository.acceptCloud(remote, events: cloudEvents); lastSynced = remote; try persistBase(remote); conflict = false
+            } else if local == remote && !eventsChanged {
                 // A prior save may have succeeded before its response was lost.
                 lastSynced = remote; try persistBase(remote); repository.events = plan.events; conflict = false
-            } else if local != lastSynced || forceLocal {
-                guard !NoteSyncRules.conflicts(local: local, remote: remote, base: lastSynced) || forceLocal else { conflict = true; status = "Conflict · choose which note to keep in Account"; return }
+            } else if local != lastSynced || forceLocal || eventsChanged {
+                guard !NoteSyncRules.conflicts(local: local, remote: remote, base: lastSynced) || forceLocal || (local == lastSynced && eventsChanged) else { conflict = true; status = "Conflict · choose which note to keep in Account"; return }
                 if forceLocal { try NoteFile(url: NoteRepository.directory.appendingPathComponent("conflict-account-backup-" + owner + ".json")).save(remote) }
-                try plan.setNotebook(local); _ = try await api.save(plan, revision: snapshot.revision, session: value)
+                let outgoing = NoteSyncRules.notebookForUpload(local: local, remote: remote, base: lastSynced, forceLocal: forceLocal)
+                try plan.setNotebook(outgoing); _ = try await api.save(plan, revision: snapshot.revision, session: value)
                 guard ticket == generation, repository.owner == owner else { return }
-                lastSynced = local; try persistBase(local); repository.events = plan.events; conflict = false
+                if repository.document == local && outgoing != local { try repository.acceptCloud(outgoing, events: plan.events) }
+                lastSynced = outgoing; try persistBase(outgoing); repository.events = plan.events; conflict = false
             } else {
-                try repository.acceptCloud(remote, events: plan.events); lastSynced = remote; try persistBase(remote)
+                try repository.acceptCloud(remote, events: cloudEvents); lastSynced = remote; try persistBase(remote)
             }
             planTasks = NoteRecommendationBuilder.parseTasks(from: plan.fields)
             Task { await NoteNotifications.reconcile(tasks: planTasks) }

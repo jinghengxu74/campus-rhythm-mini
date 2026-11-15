@@ -2,6 +2,16 @@ import XCTest
 @testable import NoteCore
 
 final class SyncSafetyTests: XCTestCase {
+    func testCalendarOnlyUploadKeepsRemoteNotebookChanges() {
+        let base = NoteDocument.cloudEmpty
+        var remote = base
+        remote.addItem("Phone addition", category: remote.categories[0].id, day: "2026-10-31")
+        XCTAssertEqual(NoteSyncRules.notebookForUpload(local: base, remote: remote, base: base, forceLocal: false), remote)
+        XCTAssertEqual(NoteSyncRules.notebookForUpload(local: base, remote: remote, base: base, forceLocal: true), base)
+        var edited = base
+        edited.addItem("Mac addition", category: edited.categories[0].id, day: "2026-10-31")
+        XCTAssertEqual(NoteSyncRules.notebookForUpload(local: edited, remote: base, base: base, forceLocal: false), edited)
+    }
     func testSuccessfulSaveWithLostResponseDoesNotCreateFalseConflict() {
         let base = NoteDocument.cloudEmpty
         var saved = base; saved.addItem("Saved", category: saved.categories[0].id, day: "2026-10-22")

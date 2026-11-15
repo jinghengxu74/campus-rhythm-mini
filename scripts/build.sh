@@ -19,8 +19,8 @@ cat > "$MINI_APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>com.campusrhythm.mini</string>
 <key>CFBundleName</key><string>Campus Rhythm Mini</string>
 <key>CFBundleDisplayName</key><string>Campus Rhythm To-Do Notes</string>
-<key>CFBundleVersion</key><string>71</string>
-<key>CFBundleShortVersionString</key><string>0.9.59</string>
+<key>CFBundleVersion</key><string>73</string>
+<key>CFBundleShortVersionString</key><string>0.9.61</string>
 <key>UTExportedTypeDeclarations</key><array><dict>
 <key>UTTypeIdentifier</key><string>com.campusrhythm.note-order</string>
 <key>UTTypeDescription</key><string>Rhythm Note internal order</string>
@@ -35,7 +35,7 @@ cat > "$MINI_APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>LSUIElement</key><false/>
-<key>NSCalendarsFullAccessUsageDescription</key><string>Rhythm Note displays your Apple Calendar events and saves events you create to your chosen calendar. These events are not uploaded to Campus Rhythm.</string>
+<key>NSCalendarsFullAccessUsageDescription</key><string>Rhythm Note displays your Apple Calendar events and saves events you create to your chosen calendar. Selected events stay on this Mac unless you enable account calendar sharing.</string>
 <key>NSCalendarsUsageDescription</key><string>Rhythm Note reads your calendars and creates events when you choose Save event.</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>

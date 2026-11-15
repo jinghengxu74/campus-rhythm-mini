@@ -74,6 +74,16 @@ import NoteCore
         }
         return rows
     }
+    func accountEvents(from day: String = NoteDay.key(), horizonDays: Int = 400) -> [PlanValue]? {
+        let enabled = UserDefaults.standard.object(forKey: "noteSyncAppleCalendarToAccount") as? Bool ?? false
+        guard enabled, allowed, let start = NoteDay.date(day), let end = Calendar.current.date(byAdding: .day, value: horizonDays, to: start) else { return nil }
+        let chosen = readableCalendars.filter { selected($0.calendarIdentifier) }
+        guard !chosen.isEmpty else { return [] }
+        let found = store.events(matching: store.predicateForEvents(withStart: start, end: end, calendars: chosen))
+        return AppleCloudEventCodec.events(from: found.map {
+            AppleCloudEventInput(stableKey: Self.stableEventKey($0), title: $0.title ?? "Untitled event", start: $0.startDate, end: $0.endDate, allDay: $0.isAllDay, location: $0.location ?? "")
+        })
+    }
     func connect(day: String) async {
         do {
             let granted: Bool
@@ -109,6 +119,7 @@ struct AppleCalendarView: View {
     @AppStorage("noteSyncAppleCalendarToPending") private var syncToPending = true
     @AppStorage("noteShowAppleCalendarTodos") private var showCalendarTodos = true
     @AppStorage("noteSyncAppleAllDayEvents") private var syncAllAllDay = true
+    @AppStorage("noteSyncAppleCalendarToAccount") private var syncToAccount = false
     private var hidden: Set<String> { Set((try? JSONDecoder().decode([String].self, from: Data(hiddenJSON.utf8))) ?? []) }
     private func key(_ event: EKEvent) -> String { AppleCalendarConnection.stableEventKey(event) + ":" + day }
     private func dragPayload(_ event: EKEvent) -> NoteCalendarDragPayload {
@@ -180,6 +191,9 @@ struct AppleCalendarView: View {
                 .onChange(of: syncToPending) { _ in syncPendingIfNeeded() }
             Toggle("Treat every all-day event as a to-do", isOn: $syncAllAllDay)
                 .onChange(of: syncAllAllDay) { _ in syncPendingIfNeeded() }
+            Toggle("Share selected calendars to Campus account", isOn: $syncToAccount)
+                .onChange(of: syncToAccount) { _ in Task { await AccountConnection.shared.sync() } }
+            Text("Read-only snapshot for your other signed-in devices. Updates while this Mac is open; the web cannot write back to Apple Calendar.").font(.caption).foregroundStyle(.secondary)
             DisclosureGroup("Calendars · \(connection.readableCalendars.filter { connection.selected($0.calendarIdentifier) }.count) shown", isExpanded: $selectingCalendars) {
                 Text("Uncheck hides it here only. It does not unsubscribe in Apple Calendar.").font(.caption).foregroundStyle(.secondary)
                 HStack {

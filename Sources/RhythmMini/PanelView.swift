@@ -390,7 +390,17 @@ struct MiniPanelView: View {
             let weekdayFormatter: DateFormatter = {
                 let formatter = DateFormatter()
                 formatter.locale = Locale(identifier: "en_US")
+                formatter.calendar = Calendar.autoupdatingCurrent
+                formatter.timeZone = TimeZone.autoupdatingCurrent
                 formatter.dateFormat = "EEE"
+                return formatter
+            }()
+            let dateFormatter: DateFormatter = {
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "en_US")
+                formatter.calendar = Calendar.autoupdatingCurrent
+                formatter.timeZone = TimeZone.autoupdatingCurrent
+                formatter.dateFormat = "M/d"
                 return formatter
             }()
             VStack(alignment: .leading, spacing: 6) {
@@ -403,16 +413,28 @@ struct MiniPanelView: View {
                         ForEach(Array(days.enumerated()), id: \.offset) { index, day in
                             let barHovered = weekBarHovered(pageEndOffset: 0, index: index)
                             VStack(spacing: 3) {
-                                Text(counts[index] == 0 ? "" : "\(counts[index])")
+                                Text("\(counts[index])")
                                     .font(controller.font(size: 9, weight: barHovered ? .semibold : .regular))
                                     .foregroundStyle(controller.ink.opacity(barHovered ? 1 : 0.5))
+                                    .frame(height: 14 * completedChartScale)
                                 weekStackedBar(day: day, total: counts[index], peak: peak, index: index, pageEndOffset: 0)
+                                    .frame(height: weekBarMaxHeight, alignment: .bottom)
                                 Text(weekdayFormatter.string(from: day))
                                     .font(controller.font(size: 9, weight: barHovered ? .semibold : .regular))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(controller.ink.opacity(0.7))
+                                    .fixedSize()
+                                    .frame(height: 15 * completedChartScale)
+                                Text(dateFormatter.string(from: day))
+                                    .font(controller.font(size: 8))
+                                    .foregroundStyle(controller.ink.opacity(0.6))
+                                    .fixedSize()
+                                    .frame(height: 14 * completedChartScale)
                             }
                             .padding(.horizontal, 3)
-                            .frame(width: dayWidth)
+                            .frame(width: dayWidth, height: 104 * completedChartScale, alignment: .bottom)
+                            .contentShape(Rectangle())
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("\(weekdayFormatter.string(from: day)), \(dateFormatter.string(from: day)): \(counts[index]) completed")
                             .overlay(alignment: index >= 4 ? .topTrailing : .topLeading) {
                                 if barHovered {
                                     weekGlassTip(day)
@@ -437,7 +459,7 @@ struct MiniPanelView: View {
                     }
                     .offset(x: -completedChartScrollX)
                 }
-                .frame(width: viewportWidth, height: 78 * completedChartScale, alignment: .leading)
+                .frame(width: viewportWidth, height: 104 * completedChartScale, alignment: .bottomLeading)
                 .clipped()
                 .padding(.top, 2)
             }
@@ -463,7 +485,7 @@ struct MiniPanelView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(height: 128 * completedChartScale)
+        .frame(height: 150 * completedChartScale)
         .accessibilityLabel("Completed tasks chart")
         .accessibilityHint("Two-finger swipe horizontally to browse one day at a time. The title totals the seven visible days. Tap a day bar to jump to that day in the list below.")
     }
